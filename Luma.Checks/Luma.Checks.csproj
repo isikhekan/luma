@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><ApplicationManifest>../Luma/app.manifest</ApplicationManifest></PropertyGroup>
+  <ItemGroup><Compile Include="../Luma/Models.cs" Link="Models.cs"/><Compile Include="../Luma/Native.cs" Link="Native.cs"/><Compile Include="../Luma/DisplayService.cs" Link="DisplayService.cs"/><Compile Include="../Luma/NvidiaService.cs" Link="NvidiaService.cs"/><Compile Include="../Luma/AdaptivePolicy.cs" Link="AdaptivePolicy.cs"/><Compile Include="../Luma/GameDetectionService.cs" Link="GameDetectionService.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="../Luma/GameCatalogScanner.cs" Link="GameCatalogScanner.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="../Luma/MonitorProfiles.cs" Link="MonitorProfiles.cs"/><Compile Include="../Luma/WindowsBrightness.cs" Link="WindowsBrightness.cs"/></ItemGroup>
+</Project>

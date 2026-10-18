@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+dist/
+release/
+artifacts/
+*.user
+*.tmp
+.vs/

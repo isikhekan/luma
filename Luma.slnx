@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Luma.Checks/Luma.Checks.csproj" />
+  <Project Path="Luma/Luma.csproj" />
+</Solution>
