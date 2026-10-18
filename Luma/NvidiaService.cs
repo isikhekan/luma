@@ -32,7 +32,11 @@ public sealed record NvidiaOutput(byte Format, byte Colorimetry, byte Range, uin
 }
 
 public sealed record NvidiaDisplayState(string Id, string Device, uint DriverDisplayId, NvidiaRange? Vibrance, int? Hue, int? DefaultHue, NvidiaOutput? Output);
-public sealed record NvidiaOption(uint Value, string Name) { public override string ToString() => Name; }
+public sealed record NvidiaOption(uint Value, string Name)
+{
+    [System.Text.Json.Serialization.JsonIgnore] public string DisplayName => Loc.T(Name);
+    public override string ToString() => DisplayName;
+}
 public sealed record NvidiaSettingDefinition(uint Id, string Name, string Description, IReadOnlyList<NvidiaOption> Options, bool Numeric = false);
 public sealed record NvidiaDriverSetting(uint Id, string Name, uint Value, uint PredefinedValue, bool IsPredefined, bool HasPredefined, bool Explicit = true);
 public sealed record NvidiaPreference(double? Vibrance = null, int? Hue = null);
@@ -116,7 +120,7 @@ public sealed class NvidiaService : IDisposable
     {
         if (_delegates.TryGetValue(id, out var cached)) return (T)cached;
         var pointer = _query?.Invoke(id) ?? IntPtr.Zero;
-        if (pointer == IntPtr.Zero) { if (required) throw new NotSupportedException($"NVIDIA işlevi bu sürücüde bulunamadı (0x{id:X8})."); return null; }
+        if (pointer == IntPtr.Zero) { if (required) throw new NotSupportedException(Loc.F($"NVIDIA işlevi bu sürücüde bulunamadı (0x{id:X8}).")); return null; }
         var function = Marshal.GetDelegateForFunctionPointer<T>(pointer); _delegates[id] = function; return function;
     }
     private bool Initialize()
@@ -145,7 +149,7 @@ public sealed class NvidiaService : IDisposable
     {
         if (code == 0) return;
         var buffer = new StringBuilder(64); Function<ErrorMessage>(0x6c2d048c)?.Invoke(code, buffer);
-        throw new InvalidOperationException($"{operation}: {(buffer.Length > 0 ? buffer.ToString() : "sürücü hatası")} ({code}).");
+        throw new InvalidOperationException($"{Loc.T(operation)}: {(buffer.Length > 0 ? buffer.ToString() : Loc.T("sürücü hatası"))} ({code}).");
     }
     public async Task RefreshAsync(IReadOnlyList<Display> displays)
     {
@@ -210,12 +214,12 @@ public sealed class NvidiaService : IDisposable
                 var get = Function<DvcCall>(0x0e45002d, true)!; var set = Function<DvcCall>(0x4a82c2b1, true)!;
                 Check(get(target.Handle, 0, ref data), "Dijital canlılık okuma");
                 var range = new NvidiaRange(data.Current, data.Minimum, data.Maximum, data.Default);
-                if (!range.Valid) throw new InvalidOperationException("Sürücü geçerli bir canlılık aralığı bildirmedi.");
+                if (!range.Valid) throw new InvalidOperationException(Loc.T("Sürücü geçerli bir canlılık aralığı bildirmedi."));
                 int desired = range.FromPercent(percent); data.Current = desired;
                 Check(set(target.Handle, 0, ref data), "Dijital canlılık uygulama");
                 data = new DvcInfo { Version = 20 | (1u << 16) }; Check(get(target.Handle, 0, ref data), "Dijital canlılık doğrulama");
                 Update(state with { Vibrance = new(data.Current, data.Minimum, data.Maximum, data.Default) });
-                if (Math.Abs(data.Current - desired) > 1) throw new InvalidOperationException("Sürücü dijital canlılık değerini doğrulamadı.");
+                if (Math.Abs(data.Current - desired) > 1) throw new InvalidOperationException(Loc.T("Sürücü dijital canlılık değerini doğrulamadı."));
             }).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
@@ -234,7 +238,7 @@ public sealed class NvidiaService : IDisposable
                 var data = new HueInfo { Version = 12 | (1u << 16) };
                 Check(Function<HueGet>(0x95b64341, true)!(target.Handle, 0, ref data), "Renk tonu doğrulama");
                 Update(state with { Hue = data.Current, DefaultHue = data.Default });
-                if (data.Current != degrees) throw new InvalidOperationException("Sürücü renk tonunu doğrulamadı.");
+                if (data.Current != degrees) throw new InvalidOperationException(Loc.T("Sürücü renk tonunu doğrulamadı."));
             }).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
@@ -266,7 +270,7 @@ public sealed class NvidiaService : IDisposable
                     data = Color(output, 2); attempted = true; Check(function(target.Id, ref data), "Renk çıkışı uygulama");
                     data = NewColor(1); Check(function(target.Id, ref data), "Renk çıkışı doğrulama");
                     var actual = Output(data); Update(state with { Output = actual });
-                    if (actual.Format != output.Format || actual.Range != output.Range || actual.Bits != output.Bits) throw new InvalidOperationException("Sürücü renk çıkışını doğrulamadı.");
+                    if (actual.Format != output.Format || actual.Range != output.Range || actual.Bits != output.Bits) throw new InvalidOperationException(Loc.T("Sürücü renk çıkışını doğrulamadı."));
                 }
                 catch
                 {
@@ -285,9 +289,9 @@ public sealed class NvidiaService : IDisposable
     }
     private (NvidiaDisplayState State, (IntPtr Handle, uint Id) Target) Target(string id)
     {
-        if (_disposed || !Available || !Displays.TryGetValue(id, out var state)) throw new InvalidOperationException("NVIDIA ekran bağlantısı bulunamadı. Yeniden tara.");
+        if (_disposed || !Available || !Displays.TryGetValue(id, out var state)) throw new InvalidOperationException(Loc.T("NVIDIA ekran bağlantısı bulunamadı. Yeniden tara."));
         ResolveHandles();
-        if (!_handles.TryGetValue(state.Device, out var target) || target.Id != state.DriverDisplayId) throw new InvalidOperationException("Ekran bağlantısı değişti. Yeniden tara.");
+        if (!_handles.TryGetValue(state.Device, out var target) || target.Id != state.DriverDisplayId) throw new InvalidOperationException(Loc.T("Ekran bağlantısı değişti. Yeniden tara."));
         return (state, target);
     }
     private void Update(NvidiaDisplayState state) { var next = Displays.ToDictionary(x => x.Key, x => x.Value); next[state.Id] = state; Displays = next; }
@@ -344,8 +348,8 @@ public sealed class NvidiaService : IDisposable
     {
         foreach (var pair in requested)
         {
-            var definition = Definitions.SingleOrDefault(x => x.Id == pair.Key) ?? throw new ArgumentException("Desteklenmeyen NVIDIA ayarı.");
-            if (definition.Numeric ? pair.Value != 0 && (pair.Value < 20 || pair.Value > 1023) : !definition.Options.Any(x => x.Value == pair.Value)) throw new ArgumentException("Geçersiz NVIDIA ayar değeri.");
+            var definition = Definitions.SingleOrDefault(x => x.Id == pair.Key) ?? throw new ArgumentException(Loc.T("Desteklenmeyen NVIDIA ayarı."));
+            if (definition.Numeric ? pair.Value != 0 && (pair.Value < 20 || pair.Value > 1023) : !definition.Options.Any(x => x.Value == pair.Value)) throw new ArgumentException(Loc.T("Geçersiz NVIDIA ayar değeri."));
         }
         await _gate.WaitAsync().ConfigureAwait(false);
         try
@@ -357,7 +361,7 @@ public sealed class NvidiaService : IDisposable
                 try
                 {
                     var before = ReadDrs(session, profile);
-                    if (requested.Keys.Any(id => before.All(x => x.Id != id))) throw new InvalidOperationException("Bir 3D ayarı sürücüden okunamadı.");
+                    if (requested.Keys.Any(id => before.All(x => x.Id != id))) throw new InvalidOperationException(Loc.T("Bir 3D ayarı sürücüden okunamadı."));
                     var changed = requested.Where(x => before.First(s => s.Id == x.Key).Value != x.Value).ToList();
                     if (changed.Count == 0) return;
                     // Save the exact previous values before the first committed driver change.
@@ -376,7 +380,7 @@ public sealed class NvidiaService : IDisposable
                 }
                 finally { CloseSession(session); }
                 DriverSettings = ReadDrs();
-                if (requested.Any(x => DriverSettings.All(s => s.Id != x.Key || s.Value != x.Value))) throw new InvalidOperationException("NVIDIA kaydedilen 3D ayarlarını doğrulamadı.");
+                if (requested.Any(x => DriverSettings.All(s => s.Id != x.Key || s.Value != x.Value))) throw new InvalidOperationException(Loc.T("NVIDIA kaydedilen 3D ayarlarını doğrulamadı."));
             }).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
@@ -389,7 +393,7 @@ public sealed class NvidiaService : IDisposable
         {
             await Task.Run(() =>
             {
-                var backup = JsonSerializer.Deserialize<NvidiaDrsBackup>(File.ReadAllText(BackupPath)) ?? throw new InvalidDataException("NVIDIA yedeği okunamadı.");
+                var backup = JsonSerializer.Deserialize<NvidiaDrsBackup>(File.ReadAllText(BackupPath)) ?? throw new InvalidDataException(Loc.T("NVIDIA yedeği okunamadı."));
                 if (!Initialize()) throw new InvalidOperationException(Status);
                 var (session, profile) = OpenSession();
                 try
@@ -413,7 +417,7 @@ public sealed class NvidiaService : IDisposable
                 }
                 finally { CloseSession(session); }
                 DriverSettings = ReadDrs();
-                if (backup.Settings.Any(x => Definitions.Any(d => d.Id == x.Id) && DriverSettings.All(s => s.Id != x.Id || s.Value != x.Value))) throw new InvalidOperationException("3D geri alma değerleri doğrulanamadı.");
+                if (backup.Settings.Any(x => Definitions.Any(d => d.Id == x.Id) && DriverSettings.All(s => s.Id != x.Id || s.Value != x.Value))) throw new InvalidOperationException(Loc.T("3D geri alma değerleri doğrulanamadı."));
                 File.Delete(BackupPath);
             }).ConfigureAwait(false);
         }
@@ -440,7 +444,7 @@ public sealed class NvidiaService : IDisposable
                         Check(Function<SetSetting>(0x577dd202, true)!(session, profile, ref data), "3D yazma testi"); touched = true;
                         Check(Function<SessionCall>(0xfcbc7e14, true)!(session), "3D testini kaydetme");
                         Check(Function<SessionCall>(0x375dbd6b, true)!(session), "3D testini yeniden yükleme");
-                        if (ReadDrs(session, profile).Single(x => x.Id == before.Id).Value != before.Value) throw new InvalidOperationException("3D yazma testi eşleşmedi.");
+                        if (ReadDrs(session, profile).Single(x => x.Id == before.Id).Value != before.Value) throw new InvalidOperationException(Loc.T("3D yazma testi eşleşmedi."));
                     }
                     finally
                     {
@@ -460,7 +464,7 @@ public sealed class NvidiaService : IDisposable
                             Check(Function<SessionCall>(0xfcbc7e14, true)!(session), "3D geri almayı kaydetme");
                             Check(Function<SessionCall>(0x375dbd6b, true)!(session), "3D geri almayı yükleme");
                             var restored = ReadDrs(session, profile).Single(x => x.Id == before.Id);
-                            if (restored.Value != before.Value || restored.Explicit != before.Explicit) throw new InvalidOperationException("3D testi sonrası önceki durum doğrulanamadı.");
+                            if (restored.Value != before.Value || restored.Explicit != before.Explicit) throw new InvalidOperationException(Loc.T("3D testi sonrası önceki durum doğrulanamadı."));
                         }
                     }
                 }

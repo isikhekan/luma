@@ -8,7 +8,12 @@ namespace Luma;
 
 public sealed record MonitorScene(string Id, string Name, string Mode, ColorSettings Color,
     double? Backlight = null, double? Vibrance = null, double? Contrast = null, int? Hue = null,
-    NvidiaOutput? Output = null, bool DisableWcg = false, bool SoftwareEnabled = true);
+    NvidiaOutput? Output = null, bool DisableWcg = false, bool SoftwareEnabled = true)
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DisplayName => Name.EndsWith(" · Gaming", StringComparison.Ordinal) ? Name[..^9] + " · " + Loc.T("Gaming")
+        : Name.EndsWith(" · Akşam", StringComparison.Ordinal) ? Name[..^8] + " · " + Loc.T("Akşam") : Name;
+}
 public sealed record MonitorProfileSet(string DisplayId, string MonitorName, string AdapterName, string Vendor,
     string Strategy, MonitorScene Gaming, MonitorScene Evening)
 {

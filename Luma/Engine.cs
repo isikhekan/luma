@@ -11,6 +11,7 @@ namespace Luma;
 public sealed class Engine : IDisposable
 {
     public AppSettings Settings { get; }
+    private readonly bool _preview;
     public DisplayService Displays { get; } = new();
     public NvidiaService Nvidia { get; } = new();
     public GameDetectionService Games { get; } = new();
@@ -28,15 +29,17 @@ public sealed class Engine : IDisposable
     public event Action? NvidiaLoaded;
     public event Action? SecondarySceneApplied;
     internal void AnnounceSceneApplied() { Changed?.Invoke(); SecondarySceneApplied?.Invoke(); }
-    public List<Profile> Profiles => Profile.Defaults().Concat(Settings.CustomProfiles).Concat(Displays.Monitors.SelectMany(d => TuningService.ScenesFor(this, d).Select(x => new Profile(x.Id, x.Name, x.Id.EndsWith("gaming") ? "\uE7FC" : "\uE708", $"Yalnızca {d.Name} · donanım + NVIDIA", x.Color)))).ToList();
+    public List<Profile> Profiles => Profile.Defaults().Concat(Settings.CustomProfiles).Concat(Displays.Monitors.SelectMany(d => TuningService.ScenesFor(this, d).Select(x => new Profile(x.Id, x.DisplayName, x.Id.EndsWith("gaming") ? "\uE7FC" : "\uE708", Loc.F($"Yalnızca {d.Name} · donanım + NVIDIA"), x.Color)))).ToList();
     public string? SelectedDisplayId { get; set; }
     public bool Paused { get; private set; }
     public DateTime? PausedUntil { get; private set; }
     public bool FullscreenPaused { get; private set; }
     public bool IsSuspended => Paused || FullscreenPaused;
-    public string? ManualUntil => _overrideUntil.HasValue && _overrideUntil > DateTime.Now ? $"{_overrideUntil:HH:mm}'e kadar manuel" : null;
+    public string? ManualUntil => _overrideUntil.HasValue && _overrideUntil > DateTime.Now ? Loc.F($"{_overrideUntil:HH:mm}'e kadar manuel") : null;
     public event Action? Changed;
     public event Action<string, string>? Notify;
+    public event Action<ProfileFeedback>? ProfileApplied;
+    private bool _lastFeedbackGame;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly DispatcherTimer _save = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private readonly DispatcherTimer _cursor = new() { Interval = TimeSpan.FromMilliseconds(40) };
@@ -62,9 +65,9 @@ public sealed class Engine : IDisposable
     }
     public IntPtr WindowHandle { get; set; }
 
-    public Engine(AppSettings settings)
+    public Engine(AppSettings settings, bool preview = false)
     {
-        Settings = settings;
+        Settings = settings; _preview = preview;
         _save.Tick += (_, _) => { _save.Stop(); try { Settings.Save(); } catch (Exception e) { Log.Write(e); Notify?.Invoke("Ayarlar kaydedilemedi", "Disk erişimini kontrol et. Ayrıntı luma.log dosyasında."); } };
         _clock.Tick += async (_, _) => await TickAsync();
         _cursor.Tick += (_, _) => WrapCursor();
@@ -128,7 +131,7 @@ public sealed class Engine : IDisposable
     public async Task FlushColorsAsync() => await _transitionTask;
     public void SetDisplayColor(string id, ColorSettings color)
     {
-        if (!Displays.Monitors.Any(x => x.Id == id)) throw new InvalidOperationException("Ekran bağlı değil.");
+        if (!Displays.Monitors.Any(x => x.Id == id)) throw new InvalidOperationException(Loc.T("Ekran bağlı değil."));
         Settings.Displays[id] = color.Safe(); Settings.ActiveMonitorScenes.Remove(id); Settings.ActiveProfileId = "custom"; ManualOverride(); Apply(Settings.SmoothTransitions); SaveSoon(); Changed?.Invoke();
     }
     public ColorSettings Current => SelectedDisplayId != null && Settings.Displays.TryGetValue(SelectedDisplayId, out var s)
@@ -136,7 +139,7 @@ public sealed class Engine : IDisposable
     public bool Mixed => SelectedDisplayId == null && Displays.Monitors.Select(x => Settings.Displays.GetValueOrDefault(x.Id, new())).Distinct().Count() > 1;
     public IEnumerable<Display> Targets => Displays.Monitors.Where(x => SelectedDisplayId == null || x.Id == SelectedDisplayId);
     public string? SelectedSceneId => Displays.Monitors.FirstOrDefault(x => x.Id == SelectedDisplayId) is { } display ? TuningService.ActiveScene(this, display) : null;
-    public string CurrentProfileName => Settings.AdaptiveEnabled && SelectedDisplayId == null && AdaptiveDecision != null ? (AdaptiveDecision.Scene == "gaming" ? "Gaming · otomatik" : "Akşam · otomatik") : SelectedSceneId is string sceneId && TuningService.FindScene(this, sceneId) is { } scene ? scene.Name : Mixed ? "Farklı ekran ayarları" : Profiles.FirstOrDefault(x => x.Color.Safe() == Current)?.Name ?? "Özel ayar";
+    public string CurrentProfileName => Settings.AdaptiveEnabled && SelectedDisplayId == null && AdaptiveDecision != null ? (AdaptiveDecision.Scene == "gaming" ? Loc.T("Gaming · otomatik") : Loc.T("Akşam · otomatik")) : SelectedSceneId is string sceneId && TuningService.FindScene(this, sceneId) is { } scene ? scene.DisplayName : Mixed ? Loc.T("Farklı ekran ayarları") : Profiles.FirstOrDefault(x => x.Color.Safe() == Current)?.DisplayName ?? Loc.T("Özel ayar");
 
     public void SelectProfile(string id, bool automatic = false)
     {
@@ -149,6 +152,7 @@ public sealed class Engine : IDisposable
         Settings.ActiveProfileId = id;
         if (!automatic) ManualOverride();
         Apply(Settings.SmoothTransitions); SaveSoon(); Changed?.Invoke();
+        _ = ReportColorsAsync(_transitionTask, automatic ? "Saat profili uygulandı" : "Profil uygulandı", profile.DisplayName);
     }
     public void SetColor(ColorSettings color)
     {
@@ -157,6 +161,13 @@ public sealed class Engine : IDisposable
         foreach (var d in Targets) Settings.ActiveMonitorScenes.Remove(d.Id);
         foreach (var d in Targets) Settings.Displays[d.Id] = color.Safe();
         Settings.ActiveProfileId = "custom"; ManualOverride(); Apply(false, true); SaveSoon();
+        _ = ReportColorsAsync(_transitionTask, "Ayar uygulandı", Loc.T("Renk ayarları güncellendi"));
+    }
+    private async Task ReportColorsAsync(Task transition, string title, string message)
+    {
+        await transition;
+        if (!_disposed && ReferenceEquals(_transitionTask, transition) && _tuningDepth == 0 && Targets.Any(d => d.ColorStatus == "Renk ayarı uygulandı"))
+            ProfileApplied?.Invoke(new(title, message, "color:" + message));
     }
     public void ManualOverride()
     {
@@ -175,8 +186,9 @@ public sealed class Engine : IDisposable
                 var legacyTarget = Displays.Monitors.FirstOrDefault(sceneId.StartsWith("dell-") ? TuningService.IsPrimaryEligible : TuningService.IsEligible);
                 if (legacyTarget != null) sceneId = TuningService.SceneFor(this, legacyTarget, sceneId.EndsWith("evening") ? "evening" : "gaming")?.Id ?? sceneId;
             }
-            var target = Displays.Monitors.SingleOrDefault(d => TuningService.ScenesFor(this, d).Any(s => s.Id == sceneId)) ?? throw new InvalidOperationException("Bu profile ait monitör bağlı değil.");
+            var target = Displays.Monitors.SingleOrDefault(d => TuningService.ScenesFor(this, d).Any(s => s.Id == sceneId)) ?? throw new InvalidOperationException(Loc.T("Bu profile ait monitör bağlı değil."));
             await TuningService.ApplyAsync(this, target.Id, sceneId); Changed?.Invoke();
+            ProfileApplied?.Invoke(new("Profil uygulandı", TuningService.FindScene(this, sceneId)?.DisplayName ?? sceneId, "scene:" + sceneId));
         }
         catch (Exception e) { Log.Write(e); Notify?.Invoke("Ekran profili uygulanamadı", e.Message); }
     }
@@ -184,7 +196,12 @@ public sealed class Engine : IDisposable
     {
         await EnsureHardwareAsync(); await EnsureNvidiaAsync(); TuningService.EnsureProfiles(this);
         BeginTuning();
-        try { foreach (var display in Displays.Monitors) if (TuningService.SceneFor(this, display, mode) is { } scene) await TuningService.ApplyAsync(this, display.Id, scene.Id); }
+        try
+        {
+            int applied = 0;
+            foreach (var display in Displays.Monitors) if (TuningService.SceneFor(this, display, mode) is { } scene) { await TuningService.ApplyAsync(this, display.Id, scene.Id); applied++; }
+            if (applied > 0) ProfileApplied?.Invoke(new("Profil uygulandı", Loc.F($"{Loc.T(mode == "gaming" ? "Gaming" : "Akşam")} · {applied} ekran"), "mode:" + mode));
+        }
         catch (Exception e) { Log.Write(e); Notify?.Invoke("Profil tamamlanamadı", e.Message); }
         finally { EndTuning(); }
     }
@@ -231,7 +248,13 @@ public sealed class Engine : IDisposable
                 catch (Exception e) { Log.Write(e); errors.Add(display.Name + ": " + e.Message); }
             }
             SelectedDisplayId = selected;
-            if (errors.Count == 0) { _adaptiveAppliedKey = key; _adaptiveRetryAfter = default; _lastAdaptiveError = null; }
+            if (errors.Count == 0)
+            {
+                _adaptiveAppliedKey = key; _adaptiveRetryAfter = default; _lastAdaptiveError = null;
+                ProfileApplied?.Invoke(new(FeedbackGate.AutomaticTitle(decision.GameActive, _lastFeedbackGame),
+                    Loc.F($"{Loc.T(decision.Scene == "gaming" ? "Gaming" : "Akşam")} · {targets.Length} ekran"), "adaptive:" + key));
+                _lastFeedbackGame = decision.GameActive;
+            }
             else
             {
                 _adaptiveRetryAfter = DateTimeOffset.Now.AddSeconds(30);
@@ -243,17 +266,19 @@ public sealed class Engine : IDisposable
         }
         finally { EndTuning(); }
     }
-    public void SaveSoon() { if (_disposed) return; _save.Stop(); _save.Start(); }
+    public void SaveSoon() { if (_disposed || _preview) return; _save.Stop(); _save.Start(); }
     public void SettingsChanged() { UpdateCursorTimer(); SaveSoon(); Changed?.Invoke(); }
     public void ScheduleChanged() { _overrideUntil = null; _scheduleApplied = null; SettingsChanged(); _ = TickAsync(); }
     public void Pause(int? minutes = null)
     {
         Paused = true; PausedUntil = minutes.HasValue ? DateTime.Now.AddMinutes(minutes.Value) : null;
         Apply(Settings.SmoothTransitions); Changed?.Invoke();
+        _ = ReportColorsAsync(_transitionTask, "Ayar uygulandı", Loc.T("Renk filtresi duraklatıldı"));
     }
     public void Resume()
     {
         Paused = false; PausedUntil = null; Apply(Settings.SmoothTransitions); Changed?.Invoke();
+        _ = ReportColorsAsync(_transitionTask, "Ayar uygulandı", Loc.T("Renk filtresi sürdürüldü"));
     }
     public void TogglePause() { if (Paused) Resume(); else Pause(); }
     public void Reset()
@@ -268,6 +293,7 @@ public sealed class Engine : IDisposable
         foreach (var d in Displays.Monitors) Settings.Displays[d.Id] = new();
         Settings.ActiveProfileId = "day"; Settings.WrapCursor = false;
         Apply(false); SettingsChanged();
+        _ = ReportColorsAsync(_transitionTask, "Ayar uygulandı", Loc.T("Yazılımsal renkler sıfırlandı. Otomasyon ve imleç sarma kapatıldı."));
     }
     private void Apply(bool smooth, bool debounce = false)
     {

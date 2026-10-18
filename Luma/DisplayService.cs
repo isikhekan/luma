@@ -293,20 +293,20 @@ public sealed class DisplayService : IDisposable
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            var display = Monitors.SingleOrDefault(x => x.Id == displayId) ?? throw new InvalidOperationException("Renk yönetimi için ekran bulunamadı.");
+            var display = Monitors.SingleOrDefault(x => x.Id == displayId) ?? throw new InvalidOperationException(Loc.T("Renk yönetimi için ekran bulunamadı."));
             await Task.Run(() =>
             {
                 var metadata = ReadDisplayConfig();
-                if (!metadata.TryGetValue(display.Device, out var before) || !before.Known) throw new InvalidOperationException("Windows renk modu okunamadı.");
-                if (before.Hdr) throw new InvalidOperationException("HDR açıkken SDR renk yönetimi değiştirilmez.");
+                if (!metadata.TryGetValue(display.Device, out var before) || !before.Known) throw new InvalidOperationException(Loc.T("Windows renk modu okunamadı."));
+                if (before.Hdr) throw new InvalidOperationException(Loc.T("HDR açıkken SDR renk yönetimi değiştirilmez."));
                 if ((before.ColorMode == 1) != enabled)
                 {
                     var request = new Native.ColorState { Header = new() { Type = 17, Size = (uint)Marshal.SizeOf<Native.ColorState>(), Adapter = before.Adapter, Id = before.Target }, Enabled = enabled ? 1u : 0u };
                     int code = Native.SetColorState(ref request);
-                    if (code != 0) throw new InvalidOperationException($"Windows otomatik renk yönetimi değiştirilemedi ({code}).");
+                    if (code != 0) throw new InvalidOperationException(Loc.F($"Windows otomatik renk yönetimi değiştirilemedi ({code})."));
                 }
                 var after = ReadDisplayConfig();
-                if (!after.TryGetValue(display.Device, out var state) || state.Hdr || (state.ColorMode == 1) != enabled) throw new InvalidOperationException("Windows renk modu doğrulanamadı.");
+                if (!after.TryGetValue(display.Device, out var state) || state.Hdr || (state.ColorMode == 1) != enabled) throw new InvalidOperationException(Loc.T("Windows renk modu doğrulanamadı."));
                 display.Hdr = state.Hdr; display.ActiveColorMode = state.ColorMode; display.AdvancedColorFlags = state.Flags;
                 display.ColorStatus = state.ColorMode == 0 ? "Hazır" : "Windows otomatik renk yönetimi açık; filtre atlandı";
             }).ConfigureAwait(false);
@@ -327,22 +327,22 @@ public sealed class DisplayService : IDisposable
         try
         {
             var ordered = orderedIds.Select(id => Monitors.Single(x => x.Id == id)).ToList();
-            if (ordered.Count != Monitors.Count || ordered.Select(x => x.Id).Distinct().Count() != Monitors.Count) throw new InvalidOperationException("Tüm ekranları birer kez seç.");
+            if (ordered.Count != Monitors.Count || ordered.Select(x => x.Id).Distinct().Count() != Monitors.Count) throw new InvalidOperationException(Loc.T("Tüm ekranları birer kez seç."));
             var backup = new Dictionary<string, NativeLayout>();
             var modes = new Dictionary<string, Native.DevMode>();
             foreach (var d in ordered)
             {
                 var mode = new Native.DevMode { Size = (ushort)Marshal.SizeOf<Native.DevMode>() };
-                if (!Native.EnumDisplaySettings(d.Device, -1, ref mode)) throw new InvalidOperationException("Ekran yerleşimi okunamadı.");
+                if (!Native.EnumDisplaySettings(d.Device, -1, ref mode)) throw new InvalidOperationException(Loc.T("Ekran yerleşimi okunamadı."));
                 modes[d.Device] = mode; backup[d.Device] = new(mode.PositionX, mode.PositionY);
             }
-            int primaryIndex = ordered.FindIndex(x => x.Primary); if (primaryIndex < 0) throw new InvalidOperationException("Ana ekran bulunamadı.");
+            int primaryIndex = ordered.FindIndex(x => x.Primary); if (primaryIndex < 0) throw new InvalidOperationException(Loc.T("Ana ekran bulunamadı."));
             int x = -ordered.Take(primaryIndex).Sum(d => d.Bounds.Width);
             var changed = new Dictionary<string, Native.DevMode>();
             foreach (var d in ordered)
             {
                 var mode = modes[d.Device]; mode.Fields = 0x20; mode.PositionX = x; mode.PositionY = 0; x += d.Bounds.Width;
-                if (Native.ChangeDisplaySettingsEx(d.Device, ref mode, IntPtr.Zero, 2, IntPtr.Zero) != 0) throw new InvalidOperationException("Windows bu yerleşimi desteklemiyor.");
+                if (Native.ChangeDisplaySettingsEx(d.Device, ref mode, IntPtr.Zero, 2, IntPtr.Zero) != 0) throw new InvalidOperationException(Loc.T("Windows bu yerleşimi desteklemiyor."));
                 changed[d.Device] = mode;
             }
             try
@@ -351,9 +351,9 @@ public sealed class DisplayService : IDisposable
                 {
                     var mode = item.Value;
                     int code = Native.ChangeDisplaySettingsEx(item.Key, ref mode, IntPtr.Zero, 0x10000001, IntPtr.Zero);
-                    if (code != 0) throw new InvalidOperationException($"Yerleşim kaydedilemedi ({code}).");
+                    if (code != 0) throw new InvalidOperationException(Loc.F($"Yerleşim kaydedilemedi ({code})."));
                 }
-                if (Native.ApplyDisplaySettings(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero) != 0) throw new InvalidOperationException("Yerleşim uygulanamadı.");
+                if (Native.ApplyDisplaySettings(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero) != 0) throw new InvalidOperationException(Loc.T("Yerleşim uygulanamadı."));
             }
             catch { RestoreLayout(backup); throw; }
             return backup;

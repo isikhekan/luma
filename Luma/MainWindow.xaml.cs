@@ -51,6 +51,8 @@ public partial class MainWindow : Window
     {
         _engine = engine; _exit = exit;
         InitializeComponent();
+        ApplyLanguage();
+        Loc.Changed += OnLanguageChanged;
         _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); ToastBorder.Visibility = Visibility.Collapsed; };
         _engine.Changed += OnEngineChanged;
         _engine.Displays.HardwareLoaded += () => Dispatcher.BeginInvoke(() => { if (_page == 2 && IsVisible) RenderPage(); });
@@ -76,11 +78,11 @@ public partial class MainWindow : Window
         _layoutCountdown.Tick += (_, _) =>
         {
             int seconds = Math.Max(0, (int)Math.Ceiling((_layoutDeadline - DateTime.Now).TotalSeconds));
-            if (_layoutCounter != null) _layoutCounter.Text = $"Bu yerleşim kalsın mı?  {seconds} sn";
+            if (_layoutCounter != null) _layoutCounter.Text = Loc.F($"Bu yerleşim kalsın mı?  {seconds} sn");
             if (seconds == 0) RevertLayout();
         };
         RenderNavigation();
-        ViewPanel.Children.Add(T("Ekranların hazırlanıyor…", 15));
+        ViewPanel.Children.Add(T(Loc.T("Ekranların hazırlanıyor…"), 15));
     }
     public void EnsureHandle() => new WindowInteropHelper(this).EnsureHandle();
     public int RegisteredHotkeyCount => _registeredHotkeys.Count;
@@ -165,34 +167,37 @@ public partial class MainWindow : Window
     public void AllowClose()
     {
         if (_layoutBackup != null) RevertLayout();
+        Loc.Changed -= OnLanguageChanged;
         _allowClose = true; _toastTimer.Stop(); _layoutCountdown.Stop(); ClearViewTimers();
         UnregisterHotkeys(); _source?.RemoveHook(WindowMessage); Close();
     }
     private void OnEngineChanged() { if (!Dispatcher.CheckAccess()) Dispatcher.BeginInvoke(RefreshLive); else RefreshLive(); }
     private void RefreshLive()
     {
-        StateBadge.Text = _engine.IsSuspended ? "Ⅱ DURAKLATILDI" : "● AKTİF";
+        StateBadge.Text = _engine.IsSuspended ? Loc.T("Ⅱ DURAKLATILDI") : Loc.T("● AKTİF");
         StateBadge.Foreground = Brush(_engine.IsSuspended ? "#FFD49A" : "#9BD6B4");
         PauseHeaderGlyph.Text = _engine.Paused ? "\uE768" : "\uE769";
         PauseHeader.Foreground = Brush(_engine.IsSuspended ? "#FFC681" : "#A4A8B8");
         PinButton.Foreground = Brush(_engine.Settings.Pinned ? "#FFC681" : "#A4A8B8");
-        PinButton.ToolTip = _engine.Settings.Pinned ? "Sabitlendi · kaldırmak için tıkla" : "Paneli açık tut";
-        if (_profileLabel != null) _profileLabel.Text = _engine.IsSuspended ? "Renk filtresi duraklatıldı" : _engine.CurrentProfileName + " modu";
+        PinButton.ToolTip = _engine.Settings.Pinned ? Loc.T("Sabitlendi · kaldırmak için tıkla") : Loc.T("Paneli açık tut");
+        if (_profileLabel != null) _profileLabel.Text = _engine.IsSuspended ? Loc.T("Renk filtresi duraklatıldı") : Loc.F($"{_engine.CurrentProfileName} modu");
         if (_colorStatus != null)
         {
             var statuses = _engine.Targets.Select(x => x.ColorStatus).Distinct().ToList();
-            _colorStatus.Text = _engine.Targets.Any() ? string.Join(" · ", statuses) : "Bağlı ekran bulunamadı. Yenilemeyi dene.";
+            _colorStatus.Text = _engine.Targets.Any() ? string.Join(" · ", statuses.Select(Loc.T)) : Loc.T("Bağlı ekran bulunamadı. Yenilemeyi dene.");
         }
-        if (_scheduleNote != null) _scheduleNote.Text = _engine.Settings.AdaptiveEnabled ? _engine.AdaptiveStatus : _engine.ManualUntil ?? (_engine.Settings.ScheduleEnabled ? "Zaman planı açık" : "Kontrol sende · otomasyon kapalı");
-        if (_pauseButton != null) _pauseButton.Content = _engine.Paused ? "▶  Devam et" : "Ⅱ  Duraklat";
+        if (_scheduleNote != null) _scheduleNote.Text = _engine.Settings.AdaptiveEnabled ? Loc.T(_engine.AdaptiveStatus) : _engine.ManualUntil ?? (_engine.Settings.ScheduleEnabled ? Loc.T("Zaman planı açık") : Loc.T("Kontrol sende · otomasyon kapalı"));
+        if (_pauseButton != null) _pauseButton.Content = new TextBlock { Text = _engine.Paused ? Loc.T("▶  Devam et") : Loc.T("Ⅱ  Duraklat"), TextWrapping = TextWrapping.Wrap };
         _syncingSliders = true;
         try { foreach (var item in _colorSliders) item.Slider.Value = item.Read(_engine.Current); }
         finally { _syncingSliders = false; }
         bool specificScene = _engine.SelectedSceneId != null;
         foreach (var item in _profileButtons) item.Value.IsChecked = !_engine.Mixed && (TuningService.FindScene(_engine, item.Key) != null ? specificScene && item.Key == _engine.SelectedSceneId : !specificScene && _engine.Profiles.FirstOrDefault(x => x.Id == item.Key)?.Color.Safe() == _engine.Current);
     }
-    public void Toast(string text)
+    public void Toast(string text, bool applied = false)
     {
+        text = Loc.Status(text);
+        if (applied) ReportSetting(text);
         ToastText.Text = text; ToastBorder.Visibility = Visibility.Visible; _toastTimer.Stop(); _toastTimer.Start();
     }
     private void RenderDisplays()
@@ -200,17 +205,17 @@ public partial class MainWindow : Window
         DisplayTabs.Children.Clear();
         void Add(string label, string? id)
         {
-            var toggle = new ToggleButton { Content = label, IsChecked = _engine.SelectedDisplayId == id, Margin = new(0, 0, 7, 0), FontSize = 11, Padding = new(12, 8, 12, 8) };
+            var toggle = new ToggleButton { Content = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center }, IsChecked = _engine.SelectedDisplayId == id, Margin = new(0, 0, 7, 0), FontSize = 11, Padding = new(12, 8, 12, 8) };
             toggle.Click += (_, _) => { _engine.SelectedDisplayId = id; RenderDisplays(); RenderPage(); };
             DisplayTabs.Children.Add(toggle);
         }
-        Add("▣  Tüm ekranlar", null);
+        Add(Loc.T("▣  Tüm ekranlar"), null);
         foreach (var d in _engine.Displays.Monitors) Add($"{d.Number}  {d.Name}", d.Id);
     }
     private void RenderNavigation()
     {
         NavPanel.Children.Clear();
-        var items = new[] { ("\uE706", "Kontrol"), ("\uE823", "Otomasyon"), ("\uE7F4", "Ekranlar"), ("\uE950", "NVIDIA"), ("\uE713", "Ayarlar") };
+        var items = new[] { ("\uE706", Loc.T("Kontrol")), ("\uE823", Loc.T("Otomasyon")), ("\uE7F4", Loc.T("Ekranlar")), ("\uE950", "NVIDIA"), ("\uE713", Loc.T("Ayarlar")) };
         for (int i = 0; i < items.Length; i++)
         {
             int page = i;
@@ -228,7 +233,7 @@ public partial class MainWindow : Window
     {
         ClearViewTimers(); ViewPanel.Children.Clear(); _profileButtons.Clear();
         _profileLabel = null; _colorStatus = null; _scheduleNote = null; _pauseButton = null; _colorSliders.Clear();
-        if (!_ready) { ViewPanel.Children.Add(T("Ekranların hazırlanıyor…", 15)); return; }
+        if (!_ready) { ViewPanel.Children.Add(T(Loc.T("Ekranların hazırlanıyor…"), 15)); return; }
         switch (_page) { case 0: RenderControl(); break; case 1: RenderAutomation(); break; case 2: RenderScreens(); break; case 3: RenderNvidia(); break; default: RenderSettings(); break; }
         ContentScroll.ScrollToTop(); RefreshLive();
     }
@@ -244,84 +249,84 @@ public partial class MainWindow : Window
         hero.Children.Add(orb);
         hero.Children.Add(new Ellipse { Width = 109, Height = 37, Stroke = Brush("#D4AA78"), StrokeThickness = .65, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 12, 10, 0), RenderTransformOrigin = new(.5, .5), RenderTransform = new RotateTransform(-28) });
         var copy = new StackPanel { Margin = new(18, 17, 115, 12), VerticalAlignment = VerticalAlignment.Center };
-        copy.Children.Add(T("EKRANININ YENİ RİTMİ", 9, "#C4AD92", FontWeights.SemiBold));
-        copy.Children.Add(T("Tam kararında\nbir ışık.", 25, "#FFF2E3", FontWeights.SemiBold, new(0, 5, 0, 9)));
+        copy.Children.Add(T(Loc.T("EKRANININ YENİ RİTMİ"), 9, "#C4AD92", FontWeights.SemiBold));
+        copy.Children.Add(T(Loc.T("Tam kararında\nbir ışık."), 25, "#FFF2E3", FontWeights.SemiBold, new(0, 5, 0, 9)));
         _profileLabel = T("", 11, "#DCC5AA"); copy.Children.Add(_profileLabel); hero.Children.Add(copy);
         ViewPanel.Children.Add(new Border { Background = heroGradient, CornerRadius = new(13), ClipToBounds = true, Child = hero, BorderBrush = Brush("#453B32"), BorderThickness = new(1), Margin = new(0, 0, 0, 19) });
-        var modeHeading = Heading("BİR MOD SEÇ", "Her ana bir ayar"); ViewPanel.Children.Add(modeHeading);
+        var modeHeading = Heading(Loc.T("BİR MOD SEÇ"), Loc.T("Her ana bir ayar")); ViewPanel.Children.Add(modeHeading);
         var profiles = new UniformGrid { Columns = 3, Margin = new(-3, 0, -3, 15) };
         foreach (var profile in _engine.Profiles)
         {
             var inside = new StackPanel();
             inside.Children.Add(Glyph(profile.Icon, 18, "#DBBB91", HorizontalAlignment.Left));
-            inside.Children.Add(T(profile.Name, 12, "#F1EDE6", FontWeights.SemiBold, new(0, 8, 0, 0)));
-            var button = new ToggleButton { Content = inside, Margin = new(3), Padding = new(12, 12, 10, 12), ToolTip = profile.Description, HorizontalContentAlignment = HorizontalAlignment.Stretch, IsChecked = profile.Color.Safe() == _engine.Current };
-            AutomationProperties.SetName(button, profile.Name + " modu");
+            inside.Children.Add(T(profile.DisplayName, 12, "#F1EDE6", FontWeights.SemiBold, new(0, 8, 0, 0)));
+            var button = new ToggleButton { Content = inside, Margin = new(3), Padding = new(12, 12, 10, 12), ToolTip = Loc.T(profile.Description), HorizontalContentAlignment = HorizontalAlignment.Stretch, IsChecked = profile.Color.Safe() == _engine.Current };
+            AutomationProperties.SetName(button, Loc.F($"{profile.DisplayName} modu"));
             button.Click += (_, _) => { _engine.SelectProfile(profile.Id); RenderPage(); };
             _profileButtons[profile.Id] = button; profiles.Children.Add(button);
         }
         ViewPanel.Children.Add(profiles);
-        ViewPanel.Children.Add(Heading("İNCE AYAR", _engine.SelectedDisplayId == null ? "Tüm ekranlara uygulanır" : "Yalnızca seçili ekran"));
+        ViewPanel.Children.Add(Heading(Loc.T("İNCE AYAR"), _engine.SelectedDisplayId == null ? Loc.T("Tüm ekranlara uygulanır") : Loc.T("Yalnızca seçili ekran")));
         var sliders = new StackPanel();
-        if (_engine.Mixed) sliders.Children.Add(T("Ekranların farklı ayarlarda. Değişiklik tümüne uygulanır.", 10, "#FFC681", margin: new(0, 0, 0, 12)));
+        if (_engine.Mixed) sliders.Children.Add(T(Loc.T("Ekranların farklı ayarlarda. Değişiklik tümüne uygulanır."), 10, "#FFC681", margin: new(0, 0, 0, 12)));
         bool supported = _engine.Targets.Any(x => x.GammaAvailable && x.ActiveColorMode == 0 && x.ColorInfoKnown);
-        Slider color = AddSlider(sliders, "Renk sıcaklığı", "\uE753", _engine.Current.Temperature, 2500, 7500, v => $"{v:0} K", v => { if (!_syncingSliders) _engine.SetColor(_engine.Current with { Temperature = Math.Round(v / 50) * 50 }); }, 50, "Sıcak", "Soğuk"); color.IsEnabled = supported;
+        Slider color = AddSlider(sliders, Loc.T("Renk sıcaklığı"), "\uE753", _engine.Current.Temperature, 2500, 7500, v => $"{v:0} K", v => { if (!_syncingSliders) _engine.SetColor(_engine.Current with { Temperature = Math.Round(v / 50) * 50 }); }, 50, Loc.T("Sıcak"), Loc.T("Soğuk")); color.IsEnabled = supported;
         _colorSliders.Add((color, s => s.Temperature));
         color.Foreground = new LinearGradientBrush(Color.FromRgb(255, 170, 92), Color.FromRgb(159, 193, 255), 0);
-        var brightness = AddSlider(sliders, "Yazılımsal parlaklık", "\uE706", _engine.Current.Brightness, 50, 100, v => $"%{v:0}", v => { if (!_syncingSliders) _engine.SetColor(_engine.Current with { Brightness = Math.Round(v) }); }, 1); brightness.IsEnabled = supported;
+        var brightness = AddSlider(sliders, Loc.T("Yazılımsal parlaklık"), "\uE706", _engine.Current.Brightness, 50, 100, v => Loc.Percent(v), v => { if (!_syncingSliders) _engine.SetColor(_engine.Current with { Brightness = Math.Round(v) }); }, 1); brightness.IsEnabled = supported;
         _colorSliders.Add((brightness, s => s.Brightness));
         _colorStatus = T("", 10, "#9097A7", margin: new(0, 6, 0, 0)); sliders.Children.Add(_colorStatus);
         ViewPanel.Children.Add(Card(sliders));
         var advanced = new StackPanel();
-        var contrast = AddSlider(advanced, "Kontrast", "\uE793", _engine.Current.Contrast, 75, 125, v => $"%{v:0}", v => { if (!_syncingSliders) _engine.SetColor(_engine.Current with { Contrast = Math.Round(v) }); }, 1); contrast.IsEnabled = supported;
-        var gamma = AddSlider(advanced, "Gama", "\uE790", _engine.Current.Gamma, .7, 1.5, v => $"{v:0.00}", v => { if (!_syncingSliders) _engine.SetColor(_engine.Current with { Gamma = Math.Round(v, 2) }); }, .01); gamma.IsEnabled = supported;
+        var contrast = AddSlider(advanced, Loc.T("Kontrast"), "\uE793", _engine.Current.Contrast, 75, 125, v => Loc.Percent(v), v => { if (!_syncingSliders) _engine.SetColor(_engine.Current with { Contrast = Math.Round(v) }); }, 1); contrast.IsEnabled = supported;
+        var gamma = AddSlider(advanced, Loc.T("Gama"), "\uE790", _engine.Current.Gamma, .7, 1.5, v => $"{v:0.00}", v => { if (!_syncingSliders) _engine.SetColor(_engine.Current with { Gamma = Math.Round(v, 2) }); }, .01); gamma.IsEnabled = supported;
         _colorSliders.Add((contrast, s => s.Contrast)); _colorSliders.Add((gamma, s => s.Gamma));
-        var profileName = new TextBox { Text = "Özel profilim", MaxLength = 28, Margin = new(0, 5, 8, 0), MinWidth = 160 };
-        AutomationProperties.SetName(profileName, "Özel profil adı");
-        var saveProfile = Btn("Profili kaydet", () =>
+        var profileName = new TextBox { Text = Loc.T("Özel profilim"), MaxLength = 28, Margin = new(0, 5, 8, 0), MinWidth = 160 };
+        AutomationProperties.SetName(profileName, Loc.T("Özel profil adı"));
+        var saveProfile = Btn(Loc.T("Profili kaydet"), () =>
         {
             string name = profileName.Text.Trim();
-            if (name.Length == 0) { Toast("Profiline bir ad ver."); return; }
-            if (_engine.Settings.CustomProfiles.Count >= 12) { Toast("En fazla 12 özel profil ekleyebilirsin. Ayarlar'dan eskileri kaldır."); return; }
-            _engine.Settings.CustomProfiles.Add(new(Guid.NewGuid().ToString("N"), name, "\uE734", "Kendi ayarın", _engine.Current)); _engine.SaveSoon(); RenderPage(); Toast("Profilin kaydedildi.");
+            if (name.Length == 0) { Toast(Loc.T("Profiline bir ad ver.")); return; }
+            if (_engine.Settings.CustomProfiles.Count >= 12) { Toast(Loc.T("En fazla 12 özel profil ekleyebilirsin. Ayarlar'dan eskileri kaldır.")); return; }
+            _engine.Settings.CustomProfiles.Add(new(Guid.NewGuid().ToString("N"), name, "\uE734", Loc.T("Kendi ayarın"), _engine.Current)); _engine.SaveSoon(); RenderPage(); Toast(Loc.T("Profilin kaydedildi."));
         }); saveProfile.Margin = new(0, 5, 0, 0);
         var saveRow = new DockPanel(); DockPanel.SetDock(saveProfile, Dock.Right); saveRow.Children.Add(saveProfile); saveRow.Children.Add(profileName); advanced.Children.Add(saveRow);
-        ViewPanel.Children.Add(Expandable("Gelişmiş renk ayarları", advanced));
+        ViewPanel.Children.Add(Expandable(Loc.T("Gelişmiş renk ayarları"), advanced));
         var footer = new Grid { Margin = new(0, 12, 0, 4) };
         footer.ColumnDefinitions.Add(new()); footer.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         var note = new StackPanel { VerticalAlignment = VerticalAlignment.Center }; _scheduleNote = T("", 10, "#9297A8"); note.Children.Add(_scheduleNote);
-        note.Children.Add(T("Ctrl + Alt + L  ·  her yerden aç", 9, "#777E90", margin: new(0, 3, 0, 0))); footer.Children.Add(note);
-        var pause = Btn(_engine.Paused ? "▶  Devam et" : "Ⅱ  Duraklat", () => { _engine.TogglePause(); RenderPage(); }); _pauseButton = pause; Grid.SetColumn(pause, 1); footer.Children.Add(pause); ViewPanel.Children.Add(footer);
+        note.Children.Add(T(Loc.T("Ctrl + Alt + L  ·  her yerden aç"), 9, "#777E90", margin: new(0, 3, 0, 0))); footer.Children.Add(note);
+        var pause = Btn(_engine.Paused ? Loc.T("▶  Devam et") : Loc.T("Ⅱ  Duraklat"), () => { _engine.TogglePause(); RenderPage(); }); _pauseButton = pause; Grid.SetColumn(pause, 1); footer.Children.Add(pause); ViewPanel.Children.Add(footer);
     }
 
     private void RenderAutomation()
     {
-        PageTitle("Günün akışına bırak.", "Işık değişsin, sen işine devam et.");
+        PageTitle(Loc.T("Günün akışına bırak."), Loc.T("Işık değişsin, sen işine devam et."));
         RenderAdaptiveAutomation();
         var settings = new StackPanel();
-        settings.Children.Add(SwitchRow("Klasik zaman planı", "Oyun + saat otomasyonu kapalıyken bu çizelge kullanılır.", _engine.Settings.ScheduleEnabled, value => { _engine.Settings.ScheduleEnabled = value; if (value) { _engine.Settings.AdaptiveEnabled = false; _engine.AdaptiveSettingsChanged(); } _engine.ScheduleChanged(); RenderPage(); }));
+        settings.Children.Add(SwitchRow(Loc.T("Klasik zaman planı"), Loc.T("Oyun + saat otomasyonu kapalıyken bu çizelge kullanılır."), _engine.Settings.ScheduleEnabled, value => { _engine.Settings.ScheduleEnabled = value; if (value) { _engine.Settings.AdaptiveEnabled = false; _engine.AdaptiveSettingsChanged(); } _engine.ScheduleChanged(); RenderPage(); }));
         settings.Children.Add(Divider());
-        settings.Children.Add(SwitchRow("Yumuşak geçişler", "Modlar arasında yaklaşık bir saniyede geç.", _engine.Settings.SmoothTransitions, value => { _engine.Settings.SmoothTransitions = value; _engine.SettingsChanged(); }));
+        settings.Children.Add(SwitchRow(Loc.T("Yumuşak geçişler"), Loc.T("Modlar arasında yaklaşık bir saniyede geç."), _engine.Settings.SmoothTransitions, value => { _engine.Settings.SmoothTransitions = value; _engine.SettingsChanged(); }));
         ViewPanel.Children.Add(Card(settings));
-        ViewPanel.Children.Add(Heading("ZAMAN ÇİZELGEN", "Her gün · bu bilgisayarın saati", new(0, 22, 0, 10)));
-        ViewPanel.Children.Add(T("Manuel ayarın bir sonraki zaman dilimine kadar korunur. Standart modlar tüm ekranlara; Dell ve LG profilleri yalnızca kendi monitörüne uygulanır.", 11, "#969CAE", margin: new(0, 0, 0, 13)));
+        ViewPanel.Children.Add(Heading(Loc.T("ZAMAN ÇİZELGEN"), Loc.T("Her gün · bu bilgisayarın saati"), new(0, 22, 0, 10)));
+        ViewPanel.Children.Add(T(Loc.T("Manuel ayarın bir sonraki zaman dilimine kadar korunur. Standart modlar tüm ekranlara; monitöre özel profiller yalnızca kendi ekranına uygulanır."), 11, "#969CAE", margin: new(0, 0, 0, 13)));
         foreach (var entry in _engine.Settings.Schedule.OrderBy(x => x.Time).ToList())
         {
             var row = new Grid { Margin = new(0, 0, 0, 8) };
             row.ColumnDefinitions.Add(new() { Width = new(40) }); row.ColumnDefinitions.Add(new() { Width = new(91) }); row.ColumnDefinitions.Add(new()); row.ColumnDefinitions.Add(new() { Width = new(34) });
             var enabled = new ToggleButton { Style = (Style)FindResource("Switch"), IsChecked = entry.Enabled, VerticalAlignment = VerticalAlignment.Center };
-            AutomationProperties.SetName(enabled, entry.Time + " zaman dilimi açık");
+            AutomationProperties.SetName(enabled, Loc.F($"{entry.Time} zaman dilimi açık"));
             enabled.Click += (_, _) =>
             {
-                if (enabled.IsChecked == true && _engine.Settings.Schedule.Any(x => x != entry && x.Enabled && x.Time == entry.Time)) { enabled.IsChecked = false; Toast("Aynı saatte iki etkin zaman dilimi olamaz."); return; }
+                if (enabled.IsChecked == true && _engine.Settings.Schedule.Any(x => x != entry && x.Enabled && x.Time == entry.Time)) { enabled.IsChecked = false; Toast(Loc.T("Aynı saatte iki etkin zaman dilimi olamaz.")); return; }
                 entry.Enabled = enabled.IsChecked == true; _engine.ScheduleChanged();
             }; row.Children.Add(enabled);
             var time = new TextBox { Text = entry.Time, MaxLength = 5, Margin = new(5, 0, 8, 0), Padding = new(3, 5, 3, 5), VerticalContentAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center };
-            AutomationProperties.SetName(time, "Başlangıç saati");
+            AutomationProperties.SetName(time, Loc.T("Başlangıç saati"));
             void SaveTime()
             {
-                if (!TimeOnly.TryParseExact(time.Text, "HH:mm", out _)) { time.Text = entry.Time; Toast("Saati 24 saat biçiminde yaz: 22:00"); return; }
-                if (_engine.Settings.Schedule.Any(x => x != entry && x.Enabled && x.Time == time.Text)) { time.Text = entry.Time; Toast("Bu saat için zaten bir zaman dilimi var."); return; }
+                if (!TimeOnly.TryParseExact(time.Text, "HH:mm", out _)) { time.Text = entry.Time; Toast(Loc.T("Saati 24 saat biçiminde yaz: 22:00")); return; }
+                if (_engine.Settings.Schedule.Any(x => x != entry && x.Enabled && x.Time == time.Text)) { time.Text = entry.Time; Toast(Loc.T("Bu saat için zaten bir zaman dilimi var.")); return; }
                 entry.Time = time.Text; _engine.ScheduleChanged();
             }
             time.LostKeyboardFocus += (_, _) => SaveTime(); time.KeyDown += (_, e) => { if (e.Key == Key.Enter) { SaveTime(); Keyboard.ClearFocus(); } };
@@ -329,101 +334,101 @@ public partial class MainWindow : Window
             var profile = ProfileCombo(entry.ProfileId); profile.Margin = new(0, 0, 7, 0);
             profile.SelectionChanged += (_, _) => { if (profile.SelectedValue is string id) { entry.ProfileId = id; _engine.ScheduleChanged(); } };
             Grid.SetColumn(profile, 2); row.Children.Add(profile);
-            var remove = Btn("×", () => { _engine.Settings.Schedule.Remove(entry); _engine.ScheduleChanged(); RenderPage(); }); remove.Padding = new(0); remove.ToolTip = "Zaman dilimini kaldır"; Grid.SetColumn(remove, 3); row.Children.Add(remove);
+            var remove = Btn("×", () => { _engine.Settings.Schedule.Remove(entry); _engine.ScheduleChanged(); RenderPage(); }); remove.Padding = new(0); remove.ToolTip = Loc.T("Zaman dilimini kaldır"); Grid.SetColumn(remove, 3); row.Children.Add(remove);
             ViewPanel.Children.Add(row);
         }
-        ViewPanel.Children.Add(Btn("＋  Zaman dilimi ekle", () =>
+        ViewPanel.Children.Add(Btn(Loc.T("＋  Zaman dilimi ekle"), () =>
         {
-            if (_engine.Settings.Schedule.Count >= 12) { Toast("En fazla 12 zaman dilimi ekleyebilirsin."); return; }
+            if (_engine.Settings.Schedule.Count >= 12) { Toast(Loc.T("En fazla 12 zaman dilimi ekleyebilirsin.")); return; }
             var used = _engine.Settings.Schedule.Select(x => x.Time).ToHashSet();
             string free = Enumerable.Range(0, 24).Select(x => $"{x:00}:00").First(x => !used.Contains(x));
             _engine.Settings.Schedule.Add(new() { Time = free, ProfileId = "focus" }); _engine.ScheduleChanged(); RenderPage();
         }));
         var options = new StackPanel();
-        options.Children.Add(SwitchRow("Tam ekranda duraklat", "Oyun veya video tam ekran olduğunda renk filtresini kaldır.", _engine.Settings.PauseFullscreen, value => { _engine.Settings.PauseFullscreen = value; _engine.SettingsChanged(); }));
+        options.Children.Add(SwitchRow(Loc.T("Tam ekranda duraklat"), Loc.T("Oyun veya video tam ekran olduğunda renk filtresini kaldır."), _engine.Settings.PauseFullscreen, value => { _engine.Settings.PauseFullscreen = value; _engine.SettingsChanged(); }));
         options.Children.Add(Divider());
-        options.Children.Add(SwitchRow("Mola hatırlatıcısı", "Bildirimi tam ekran uygulamaları bölmeden göster.", _engine.Settings.BreakReminder, value => { _engine.Settings.BreakReminder = value; _engine.SettingsChanged(); }));
+        options.Children.Add(SwitchRow(Loc.T("Mola hatırlatıcısı"), Loc.T("Bildirimi tam ekran uygulamaları bölmeden göster."), _engine.Settings.BreakReminder, value => { _engine.Settings.BreakReminder = value; _engine.SettingsChanged(); }));
         var interval = new ComboBox { ItemsSource = new[] { 15, 20, 30, 45, 60, 90, 120 }.Append(_engine.Settings.BreakMinutes).Distinct().OrderBy(x => x).ToList(), SelectedItem = _engine.Settings.BreakMinutes, Margin = new(0, 10, 0, 0) };
-        AutomationProperties.SetName(interval, "Mola aralığı dakika");
+        AutomationProperties.SetName(interval, Loc.T("Mola aralığı dakika"));
         interval.SelectionChanged += (_, _) => { if (interval.SelectedItem is int minutes) { _engine.Settings.BreakMinutes = minutes; _engine.SaveSoon(); } };
-        var intervalRow = new DockPanel(); var label = T("Mola aralığı (dakika)", 11, "#A5AABB", margin: new(0, 17, 10, 0)); DockPanel.SetDock(label, Dock.Left); intervalRow.Children.Add(label); intervalRow.Children.Add(interval); options.Children.Add(intervalRow);
-        ViewPanel.Children.Add(Heading("AKILLI DOKUNUŞLAR", "", new(0, 22, 0, 10))); ViewPanel.Children.Add(Card(options));
+        var intervalRow = new DockPanel(); var label = T(Loc.T("Mola aralığı (dakika)"), 11, "#A5AABB", margin: new(0, 17, 10, 0)); DockPanel.SetDock(label, Dock.Left); intervalRow.Children.Add(label); intervalRow.Children.Add(interval); options.Children.Add(intervalRow);
+        ViewPanel.Children.Add(Heading(Loc.T("AKILLI DOKUNUŞLAR"), "", new(0, 22, 0, 10))); ViewPanel.Children.Add(Card(options));
         var quick = new WrapPanel { Margin = new(0, 14, 0, 0) };
-        foreach (int m in new[] { 15, 30, 60 }) { var b = Btn($"{m} dk duraklat", () => { _engine.Pause(m); Toast($"Renk filtresi {m} dakika duraklatıldı."); }); b.Margin = new(0, 0, 7, 7); quick.Children.Add(b); }
+        foreach (int m in new[] { 15, 30, 60 }) { var b = Btn(Loc.F($"{m} dk duraklat"), () => { _engine.Pause(m); Toast(Loc.F($"Renk filtresi {m} dakika duraklatıldı.")); }); b.Margin = new(0, 0, 7, 7); quick.Children.Add(b); }
         ViewPanel.Children.Add(quick);
     }
 
     private void RenderScreens()
     {
-        PageTitle("Ekranların bir arada.", "Donanım, yerleşim ve geçişler. Tek bir yerden.");
+        PageTitle(Loc.T("Ekranların bir arada."), Loc.T("Donanım, yerleşim ve geçişler. Tek bir yerden."));
         var display = _engine.Displays.Monitors.FirstOrDefault(x => x.Id == _engine.SelectedDisplayId)
             ?? _engine.Displays.Monitors.FirstOrDefault(x => x.Id == _hardwareDisplayId) ?? _engine.Displays.Monitors.FirstOrDefault();
         if (display == null)
         {
-            ViewPanel.Children.Add(T("Bağlı ekran bulunamadı.", 13)); ViewPanel.Children.Add(Btn("Yeniden tara", RefreshClicked)); return;
+            ViewPanel.Children.Add(T(Loc.T("Bağlı ekran bulunamadı."), 13)); ViewPanel.Children.Add(Btn(Loc.T("Yeniden tara"), RefreshClicked)); return;
         }
         _hardwareDisplayId = display.Id;
         var pick = new ComboBox { ItemsSource = _engine.Displays.Monitors, DisplayMemberPath = "Name", SelectedValuePath = "Id", SelectedValue = display.Id, Margin = new(0, 0, 0, 12) };
-        AutomationProperties.SetName(pick, "Donanım ayarları yapılacak monitör");
+        AutomationProperties.SetName(pick, Loc.T("Donanım ayarları yapılacak monitör"));
         pick.SelectionChanged += (_, _) => { if (pick.SelectedValue is string id) { _hardwareDisplayId = id; _engine.SelectedDisplayId = id; RenderDisplays(); RenderPage(); } };
         ViewPanel.Children.Add(pick);
         var hardware = new StackPanel();
         var infoRow = new DockPanel();
-        var badge = new Border { Background = Brush(display.Features.Count > 0 ? "#23352D" : "#302D28"), CornerRadius = new(5), Padding = new(7, 4, 7, 4), VerticalAlignment = VerticalAlignment.Top, Child = T(display.Features.Count > 0 ? "DDC/CI" : "BİLGİ", 9, display.Features.Count > 0 ? "#9DD6B5" : "#D9BD95", FontWeights.SemiBold) };
+        var badge = new Border { Background = Brush(display.Features.Count > 0 ? "#23352D" : "#302D28"), CornerRadius = new(5), Padding = new(7, 4, 7, 4), VerticalAlignment = VerticalAlignment.Top, Child = T(display.Features.Count > 0 ? "DDC/CI" : Loc.T("BİLGİ"), 9, display.Features.Count > 0 ? "#9DD6B5" : "#D9BD95", FontWeights.SemiBold) };
         DockPanel.SetDock(badge, Dock.Right); infoRow.Children.Add(badge);
-        var info = new StackPanel(); info.Children.Add(T(display.Name, 15, "#F4EEE5", FontWeights.SemiBold)); info.Children.Add(T(display.Detail + (display.Primary ? " · Ana ekran" : ""), 10, "#979FB0", margin: new(0, 5, 0, 0))); infoRow.Children.Add(info); hardware.Children.Add(infoRow);
-        hardware.Children.Add(T(display.HardwareStatus, 10, "#A1ABBC", margin: new(0, 12, 0, 9)));
+        var info = new StackPanel(); info.Children.Add(T(display.Name, 15, "#F4EEE5", FontWeights.SemiBold)); info.Children.Add(T(display.Detail + (display.Primary ? " · " + Loc.T("Ana ekran") : ""), 10, "#979FB0", margin: new(0, 5, 0, 0))); infoRow.Children.Add(info); hardware.Children.Add(infoRow);
+        hardware.Children.Add(T(Loc.T(display.HardwareStatus), 10, "#A1ABBC", margin: new(0, 12, 0, 9)));
         hardware.Children.Add(Divider());
         foreach (byte code in new byte[] { 0x10, 0x12, 0x62 }) AddHardwareSlider(hardware, display, code);
         if (display.Features.Count == 0)
         {
-            hardware.Children.Add(T("Monitörünün fiziksel menüsünde DDC/CI seçeneğini aç. HDMI veya DisplayPort bağlantısı gerekir; bazı dizüstü panelleri ve adaptörler bu özelliği sunmaz.", 11, "#A4AABB", margin: new(0, 7, 0, 8)));
-            hardware.Children.Add(Btn("Windows parlaklık ayarları ↗", () => OpenSettings("ms-settings:display")));
+            hardware.Children.Add(T(Loc.T("Monitörünün fiziksel menüsünde DDC/CI seçeneğini aç. HDMI veya DisplayPort bağlantısı gerekir; bazı dizüstü panelleri ve adaptörler bu özelliği sunmaz."), 11, "#A4AABB", margin: new(0, 7, 0, 8)));
+            hardware.Children.Add(Btn(Loc.T("Windows parlaklık ayarları ↗"), () => OpenSettings("ms-settings:display")));
         }
         var rgb = new StackPanel();
         foreach (byte code in new byte[] { 0x16, 0x18, 0x1A }) AddHardwareSlider(rgb, display, code);
-        if (rgb.Children.Count > 0) hardware.Children.Add(Expandable("Monitörün RGB kazançları", rgb));
+        if (rgb.Children.Count > 0) hardware.Children.Add(Expandable(Loc.T("Monitörün RGB kazançları"), rgb));
         if (display.Features.TryGetValue(0x60, out var input) && display.Inputs.Count > 0)
         {
-            hardware.Children.Add(T("Giriş kaynağı", 11, "#ABB0BF", margin: new(0, 12, 0, 8)));
+            hardware.Children.Add(T(Loc.T("Giriş kaynağı"), 11, "#ABB0BF", margin: new(0, 12, 0, 8)));
             var sources = new ComboBox { ItemsSource = display.Inputs, DisplayMemberPath = "Value", SelectedValuePath = "Key", SelectedValue = input.Current };
-            AutomationProperties.SetName(sources, "Monitör giriş kaynağı"); hardware.Children.Add(sources);
-            hardware.Children.Add(T("Değiştirdiğinde mevcut görüntü kesilebilir. Seçimden sonra uygula.", 10, "#A7A7AB", margin: new(0, 7, 0, 8)));
-            hardware.Children.Add(Btn("Giriş kaynağını uygula", async () =>
+            AutomationProperties.SetName(sources, Loc.T("Monitör giriş kaynağı")); hardware.Children.Add(sources);
+            hardware.Children.Add(T(Loc.T("Değiştirdiğinde mevcut görüntü kesilebilir. Seçimden sonra uygula."), 10, "#A7A7AB", margin: new(0, 7, 0, 8)));
+            hardware.Children.Add(Btn(Loc.T("Giriş kaynağını uygula"), async () =>
             {
                 if (sources.SelectedValue is not uint selected || selected == input.Current) return;
                 _dialog = true;
                 try
                 {
-                    if (MessageBox.Show(this, $"{display.Name}, {DisplayService.InputName(selected)} girişine geçirilecek. Bu bilgisayar o girişe bağlı değilse görüntü kesilir. Devam edilsin mi?", "Giriş kaynağı", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-                    bool ok = await _engine.Displays.SetHardwareAsync(display.Id, 0x60, selected); Toast(ok ? "Giriş değişikliği monitöre gönderildi." : "Monitör giriş değişikliğini kabul etmedi.");
+                    if (MessageBox.Show(this, Loc.F($"{display.Name}, {DisplayService.InputName(selected)} girişine geçirilecek. Bu bilgisayar o girişe bağlı değilse görüntü kesilir. Devam edilsin mi?"), Loc.T("Giriş kaynağı"), MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+                    bool ok = await _engine.Displays.SetHardwareAsync(display.Id, 0x60, selected); Toast(ok ? Loc.T("Giriş değişikliği monitöre gönderildi.") : Loc.T("Monitör giriş değişikliğini kabul etmedi."));
                 }
                 finally { _dialog = false; }
             }));
         }
-        hardware.Children.Add(T("Donanım ayarları doğrudan monitöre uygulanır; renk profillerinden bağımsızdır.", 10, "#7F899E", margin: new(0, 12, 0, 0)));
+        hardware.Children.Add(T(Loc.T("Donanım ayarları doğrudan monitöre uygulanır; renk profillerinden bağımsızdır."), 10, "#7F899E", margin: new(0, 12, 0, 0)));
         ViewPanel.Children.Add(Card(hardware));
         if (display.WindowsBrightnessInstance != null && !display.Features.ContainsKey(0x10))
         {
-            var windows = new StackPanel(); windows.Children.Add(T("Windows panel parlaklığı", 12));
+            var windows = new StackPanel(); windows.Children.Add(T(Loc.T("Windows panel parlaklığı"), 12));
             var slider = new Slider { Minimum = 0, Maximum = 100, Value = display.WindowsBrightnessPercent ?? 50 };
-            AutomationProperties.SetName(slider, "Windows gerçek ekran parlaklığı");
+            AutomationProperties.SetName(slider, Loc.T("Windows gerçek ekran parlaklığı"));
             var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) }; _viewTimers.Add(timer);
             slider.ValueChanged += (_, _) => { timer.Stop(); timer.Start(); };
-            timer.Tick += async (_, _) => { timer.Stop(); bool ok = await _engine.Displays.SetBrightnessAsync(display.Id, slider.Value); if (!ok) Toast("Windows parlaklık ayarı doğrulanamadı."); };
+            timer.Tick += async (_, _) => { timer.Stop(); bool ok = await _engine.Displays.SetBrightnessAsync(display.Id, slider.Value); if (!ok) Toast(Loc.T("Windows parlaklık ayarı doğrulanamadı.")); else ReportSetting(Loc.T("Windows panel parlaklığı"), "windows-brightness"); };
             windows.Children.Add(slider); ViewPanel.Children.Add(Card(windows));
         }
         RenderTuning(display);
-        ViewPanel.Children.Add(Heading("SAĞDAN SOLA, KESİNTİSİZ", "Ekran yerleşimi", new(0, 22, 0, 10)));
+        ViewPanel.Children.Add(Heading(Loc.T("SAĞDAN SOLA, KESİNTİSİZ"), Loc.T("Ekran yerleşimi"), new(0, 22, 0, 10)));
         RenderLayout();
         var transitions = new StackPanel();
-        transitions.Children.Add(SwitchRow("Dış kenarlarda imleci sar", "En sağ kenardan en sola, en soldan en sağa geç.", _engine.Settings.WrapCursor, value => { _engine.Settings.WrapCursor = value; _engine.SettingsChanged(); }));
-        transitions.Children.Add(T("Normal ekran geçişleri Windows yerleşimini izler. Farklı çözünürlüklerde geçiş, ekranların ortak kenarında yapılır.", 10, "#8B95A8", margin: new(0, 11, 0, 0)));
+        transitions.Children.Add(SwitchRow(Loc.T("Dış kenarlarda imleci sar"), Loc.T("En sağ kenardan en sola, en soldan en sağa geç."), _engine.Settings.WrapCursor, value => { _engine.Settings.WrapCursor = value; _engine.SettingsChanged(); }));
+        transitions.Children.Add(T(Loc.T("Normal ekran geçişleri Windows yerleşimini izler. Farklı çözünürlüklerde geçiş, ekranların ortak kenarında yapılır."), 10, "#8B95A8", margin: new(0, 11, 0, 0)));
         ViewPanel.Children.Add(Card(transitions, new(0, 12, 0, 0)));
         RenderGpu();
         var actions = new WrapPanel { Margin = new(0, 16, 0, 0) };
-        var identify = Btn("Ekranları tanımla", IdentifyMonitors); identify.Margin = new(0, 0, 8, 6); actions.Children.Add(identify);
-        var refresh = Btn("↻  Yeniden tara", RefreshClicked); refresh.Margin = new(0, 0, 8, 6); actions.Children.Add(refresh); ViewPanel.Children.Add(actions);
+        var identify = Btn(Loc.T("Ekranları tanımla"), IdentifyMonitors); identify.Margin = new(0, 0, 8, 6); actions.Children.Add(identify);
+        var refresh = Btn(Loc.T("↻  Yeniden tara"), RefreshClicked); refresh.Margin = new(0, 0, 8, 6); actions.Children.Add(refresh); ViewPanel.Children.Add(actions);
     }
 
     private void AddHardwareSlider(StackPanel panel, Display display, byte code)
@@ -434,8 +439,8 @@ public partial class MainWindow : Window
         // Hardware sliders use the monitor's actual range; never assume it is 0–100.
         double minimum = code == 0x10 ? Math.Min(feature.Current, Math.Max(1, Math.Ceiling(feature.Maximum * .02))) : 0;
         var slider = AddSlider(panel, feature.Name, code == 0x62 ? "\uE767" : "\uE7F4", feature.Current, minimum, feature.Maximum,
-            v => $"%{v / feature.Maximum * 100:0}", _ => { timer.Stop(); timer.Start(); }, 1);
-        AutomationProperties.SetName(slider, display.Name + " donanım " + feature.Name);
+            v => Loc.Percent(v / feature.Maximum * 100), _ => { timer.Stop(); timer.Start(); }, 1);
+        AutomationProperties.SetName(slider, Loc.F($"{display.Name} donanım {Loc.T(feature.Name)}"));
         panel.Children.Add(status);
         bool applying = false; uint? pending = null;
         async Task ApplyPending()
@@ -446,13 +451,14 @@ public partial class MainWindow : Window
                 while (pending.HasValue)
                 {
                     var value = pending.Value; pending = null;
-                    status.Text = "Monitöre gönderiliyor…";
+                    status.Text = Loc.T("Monitöre gönderiliyor…");
                     bool ok = await _engine.Displays.SetHardwareAsync(display.Id, code, value);
-                    status.Text = ok ? "Monitörden doğrulandı" : "Monitör doğrulamadı; ayarını monitör menüsünden kontrol et.";
+                    status.Text = ok ? Loc.T("Monitörden doğrulandı") : Loc.T("Monitör doğrulamadı; ayarını monitör menüsünden kontrol et.");
+                    if (ok) ReportSetting(Loc.F($"{display.Name} donanım {Loc.T(feature.Name)}"), "hardware");
                     status.Foreground = Brush(ok ? "#8ABB9E" : "#E4B77E");
                 }
             }
-            catch (Exception e) { Log.Write(e); status.Text = "Monitöre erişilemedi. Yeniden taramayı dene."; }
+            catch (Exception e) { Log.Write(e); status.Text = Loc.T("Monitöre erişilemedi. Yeniden taramayı dene."); }
             finally { applying = false; }
         }
         timer.Tick += async (_, _) => { timer.Stop(); pending = (uint)Math.Round(slider.Value); await ApplyPending(); };
@@ -464,30 +470,30 @@ public partial class MainWindow : Window
         if (_layoutOrder.Count != monitors.Count || !_layoutOrder.All(id => monitors.Any(x => x.Id == id))) _layoutOrder = monitors.OrderBy(x => x.Bounds.Left).ThenBy(x => x.Bounds.Top).Select(x => x.Id).ToList();
         if (_layoutSelected == null || !_layoutOrder.Contains(_layoutSelected)) _layoutSelected = _layoutOrder.FirstOrDefault();
         var panel = new StackPanel();
-        panel.Children.Add(T("Bir ekranı seç, oklarla soldaki veya sağdaki yerine taşı. Uygula dediğinde Windows yerleşimi de değişir.", 11, "#A3AABD", margin: new(0, 0, 0, 14)));
+        panel.Children.Add(T(Loc.T("Bir ekranı seç, oklarla soldaki veya sağdaki yerine taşı. Uygula dediğinde Windows yerleşimi de değişir."), 11, "#A3AABD", margin: new(0, 0, 0, 14)));
         var strip = new UniformGrid { Columns = Math.Max(1, monitors.Count), Height = 80 };
         foreach (var id in _layoutOrder)
         {
             var d = monitors.First(x => x.Id == id); var text = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(T(d.Number.ToString(), 24, id == _layoutSelected ? "#FFD297" : "#A4ADBD", FontWeights.SemiBold));
-            text.Children.Add(T(d.Primary ? "ANA EKRAN" : $"{d.Bounds.Width} × {d.Bounds.Height}", 8, "#9A9EAB", margin: new(0, 3, 0, 0)));
+            text.Children.Add(T(d.Primary ? Loc.T("ANA EKRAN") : $"{d.Bounds.Width} × {d.Bounds.Height}", 8, "#9A9EAB", margin: new(0, 3, 0, 0)));
             var b = new ToggleButton { Content = text, Margin = new(3), IsChecked = id == _layoutSelected, HorizontalContentAlignment = HorizontalAlignment.Center };
-            b.ToolTip = d.Name; AutomationProperties.SetName(b, $"Yerleşimde ekran {d.Number}");
+            b.ToolTip = d.Name; AutomationProperties.SetName(b, Loc.F($"Yerleşimde ekran {d.Number}"));
             b.Click += (_, _) => { _layoutSelected = id; RenderPage(); };
             strip.Children.Add(b);
         }
         panel.Children.Add(strip);
         var buttons = new Grid { Margin = new(0, 13, 0, 0) }; buttons.ColumnDefinitions.Add(new()); buttons.ColumnDefinitions.Add(new()); buttons.ColumnDefinitions.Add(new() { Width = new(130) });
-        var left = Btn("←  Sola", () => MoveLayout(-1)); var right = Btn("Sağa  →", () => MoveLayout(1));
+        var left = Btn(Loc.T("←  Sola"), () => MoveLayout(-1)); var right = Btn(Loc.T("Sağa  →"), () => MoveLayout(1));
         left.Margin = new(0, 0, 6, 0); right.Margin = new(0, 0, 6, 0); left.IsEnabled = monitors.Count > 1 && !_layoutBusy && _layoutBackup == null; right.IsEnabled = left.IsEnabled;
-        var apply = Btn("Yerleşimi uygula", ApplyLayout); apply.IsEnabled = left.IsEnabled; apply.Background = Brush("#FFC681"); apply.Foreground = Brush("#2A2117"); apply.BorderBrush = Brush("#FFC681");
+        var apply = Btn(Loc.T("Yerleşimi uygula"), ApplyLayout); apply.IsEnabled = left.IsEnabled; apply.Background = Brush("#FFC681"); apply.Foreground = Brush("#2A2117"); apply.BorderBrush = Brush("#FFC681");
         Grid.SetColumn(right, 1); Grid.SetColumn(apply, 2); buttons.Children.Add(left); buttons.Children.Add(right); buttons.Children.Add(apply); panel.Children.Add(buttons);
-        if (monitors.Count < 2) panel.Children.Add(T("Bu özellik için ikinci bir ekran bağla.", 10, "#A09B92", margin: new(0, 10, 0, 0)));
+        if (monitors.Count < 2) panel.Children.Add(T(Loc.T("Bu özellik için ikinci bir ekran bağla."), 10, "#A09B92", margin: new(0, 10, 0, 0)));
         var confirmPanel = new StackPanel(); _layoutCounter = T("", 12, "#FFD49A", FontWeights.SemiBold); confirmPanel.Children.Add(_layoutCounter);
         var confirmation = new WrapPanel { Margin = new(0, 9, 0, 0) };
-        var keep = Btn("Bu yerleşimi koru", () => { _layoutCountdown.Stop(); _layoutBackup = null; if (_layoutConfirm != null) _layoutConfirm.Visibility = Visibility.Collapsed; RenderPage(); Toast("Yeni ekran yerleşimi kaydedildi."); }); keep.Margin = new(0, 0, 8, 0); confirmation.Children.Add(keep); confirmation.Children.Add(Btn("Geri al", RevertLayout)); confirmPanel.Children.Add(confirmation);
+        var keep = Btn(Loc.T("Bu yerleşimi koru"), () => { _layoutCountdown.Stop(); _layoutBackup = null; if (_layoutConfirm != null) _layoutConfirm.Visibility = Visibility.Collapsed; RenderPage(); Toast(Loc.T("Yeni ekran yerleşimi kaydedildi."), true); }); keep.Margin = new(0, 0, 8, 0); confirmation.Children.Add(keep); confirmation.Children.Add(Btn(Loc.T("Geri al"), RevertLayout)); confirmPanel.Children.Add(confirmation);
         _layoutConfirm = new Border { Background = Brush("#373024"), Padding = new(12), CornerRadius = new(9), Margin = new(0, 12, 0, 0), Child = confirmPanel, Visibility = _layoutBackup == null ? Visibility.Collapsed : Visibility.Visible }; panel.Children.Add(_layoutConfirm);
-        panel.Children.Add(Btn("Windows ekran ayarları ↗", () => OpenSettings("ms-settings:display"), new(0, 12, 0, 0)));
+        panel.Children.Add(Btn(Loc.T("Windows ekran ayarları ↗"), () => OpenSettings("ms-settings:display"), new(0, 12, 0, 0)));
         ViewPanel.Children.Add(Card(panel));
     }
     private void MoveLayout(int direction)
@@ -503,7 +509,7 @@ public partial class MainWindow : Window
         {
             _layoutBackup = await _engine.Displays.ArrangeAsync(_layoutOrder.ToList());
             _layoutDeadline = DateTime.Now.AddSeconds(15); _layoutCountdown.Start();
-            RenderPage(); Toast("15 saniye içinde onaylamazsan eski yerleşim geri gelir.");
+            RenderPage(); Toast(Loc.T("15 saniye içinde onaylamazsan eski yerleşim geri gelir."));
         }
         catch (Exception e) { Log.Write(e); Toast(e.Message); }
         finally { _layoutBusy = false; }
@@ -514,70 +520,71 @@ public partial class MainWindow : Window
         if (backup == null) return;
         DisplayService.RestoreLayout(backup); _layoutOrder.Clear();
         if (_layoutConfirm != null) _layoutConfirm.Visibility = Visibility.Collapsed;
-        Toast("Önceki ekran yerleşimi geri yüklendi."); RenderPage();
+        Toast(Loc.T("Önceki ekran yerleşimi geri yüklendi."), true); RenderPage();
     }
     private void RenderGpu()
     {
-        ViewPanel.Children.Add(Heading("GRAFİK KARTIN", "Doğrudan sürücü kontrolü", new(0, 22, 0, 10)));
+        ViewPanel.Children.Add(Heading(Loc.T("GRAFİK KARTIN"), Loc.T("Doğrudan sürücü kontrolü"), new(0, 22, 0, 10)));
         var gpu = new StackPanel();
         bool nvidia = _engine.Displays.Gpus.Any(x => x.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase));
-        gpu.Children.Add(T(string.Join("\n", _engine.Displays.Gpus.DefaultIfEmpty("Grafik kartı bilgisi alınamadı")), 13, "#DDE5DD", FontWeights.SemiBold));
-        gpu.Children.Add(T("Dijital canlılık, renk tonu, RGB çıkışı, bit derinliği ve 3D tercihlerini NVIDIA sekmesinden yönet.", 11, "#959FAF", margin: new(0, 9, 0, 12)));
+        gpu.Children.Add(T(string.Join("\n", _engine.Displays.Gpus.DefaultIfEmpty(Loc.T("Grafik kartı bilgisi alınamadı"))), 13, "#DDE5DD", FontWeights.SemiBold));
+        gpu.Children.Add(T(Loc.T("Dijital canlılık, renk tonu, RGB çıkışı, bit derinliği ve 3D tercihlerini NVIDIA sekmesinden yönet."), 11, "#959FAF", margin: new(0, 9, 0, 12)));
         if (nvidia)
         {
-            var open = Btn("NVIDIA ayarlarını Luma'da aç", () => { _page = 3; RenderNavigation(); RenderPage(); }); open.BorderBrush = Brush("#4C6442"); open.Foreground = Brush("#B4D79B"); gpu.Children.Add(open);
+            var open = Btn(Loc.T("NVIDIA ayarlarını Luma'da aç"), () => { _page = 3; RenderNavigation(); RenderPage(); }); open.BorderBrush = Brush("#4C6442"); open.Foreground = Brush("#B4D79B"); gpu.Children.Add(open);
         }
-        else gpu.Children.Add(T("Bu bilgisayarda etkin bir NVIDIA ekran kartı algılanmadı.", 10, "#9AA2B0"));
-        gpu.Children.Add(Btn("Windows gelişmiş ekran ayarları ↗", () => OpenSettings("ms-settings:display-advanced"), new(0, 8, 0, 0)));
-        gpu.Children.Add(Btn("Uygulama başına GPU tercihi ↗", () => OpenSettings("ms-settings:display-advancedgraphics"), new(0, 8, 0, 0)));
+        else gpu.Children.Add(T(Loc.T("Bu bilgisayarda etkin bir NVIDIA ekran kartı algılanmadı."), 10, "#9AA2B0"));
+        gpu.Children.Add(Btn(Loc.T("Windows gelişmiş ekran ayarları ↗"), () => OpenSettings("ms-settings:display-advanced"), new(0, 8, 0, 0)));
+        gpu.Children.Add(Btn(Loc.T("Uygulama başına GPU tercihi ↗"), () => OpenSettings("ms-settings:display-advancedgraphics"), new(0, 8, 0, 0)));
         ViewPanel.Children.Add(Card(gpu));
     }
 
     private void RenderSettings()
     {
-        PageTitle("İnce düşünülmüş.", "Luma senin alışkanlıklarına uysun.");
+        PageTitle(Loc.T("İnce düşünülmüş."), Loc.T("Luma senin alışkanlıklarına uysun."));
+        RenderLanguageSettings();
         var system = new StackPanel();
-        system.Children.Add(SwitchRow("Windows ile başlat", "Oturum açınca sessizce sistem tepsisinde başla.", SystemIntegration.StartupEnabled, value =>
+        system.Children.Add(SwitchRow(Loc.T("Windows ile başlat"), Loc.T("Oturum açınca sessizce sistem tepsisinde başla."), SystemIntegration.StartupEnabled, value =>
         {
-            try { SystemIntegration.SetStartup(value); Toast(value ? "Windows açılışında sistem tepsisinde başlayacak." : "Otomatik başlatma kapatıldı."); }
-            catch (Exception e) { Log.Write(e); Toast("Başlangıç tercihi kaydedilemedi."); RenderPage(); }
+            try { SystemIntegration.SetStartup(value); Toast(value ? Loc.T("Windows açılışında sistem tepsisinde başlayacak.") : Loc.T("Otomatik başlatma kapatıldı.")); }
+            catch (Exception e) { Log.Write(e); Toast(Loc.T("Başlangıç tercihi kaydedilemedi.")); RenderPage(); }
         }));
         system.Children.Add(Divider());
-        system.Children.Add(SwitchRow("Paneli açık tut", "Başka yere tıkladığında da Luma görünür kalsın.", _engine.Settings.Pinned, value => { _engine.Settings.Pinned = value; _engine.SettingsChanged(); }));
+        system.Children.Add(SwitchRow(Loc.T("Paneli açık tut"), Loc.T("Başka yere tıkladığında da Luma görünür kalsın."), _engine.Settings.Pinned, value => { _engine.Settings.Pinned = value; _engine.SettingsChanged(); }));
         system.Children.Add(Divider());
-        system.Children.Add(SwitchRow("Genel klavye kısayolları", "Luma arka plandayken de kontrol sende.", _engine.Settings.Hotkeys, value => { _engine.Settings.Hotkeys = value; _engine.SettingsChanged(); RegisterHotkeys(); RenderPage(); }));
+        system.Children.Add(SwitchRow(Loc.T("Genel klavye kısayolları"), Loc.T("Luma arka plandayken de kontrol sende."), _engine.Settings.Hotkeys, value => { _engine.Settings.Hotkeys = value; _engine.SettingsChanged(); RegisterHotkeys(); RenderPage(); }));
         ViewPanel.Children.Add(Card(system));
-        ViewPanel.Children.Add(Heading("ELİNİN ALTINDA", "Klavye kısayolları", new(0, 22, 0, 10)));
+        ViewPanel.Children.Add(Heading(Loc.T("ELİNİN ALTINDA"), Loc.T("Klavye kısayolları"), new(0, 22, 0, 10)));
         var keys = new StackPanel();
-        foreach (var (key, action) in new[] { ("Ctrl + Alt + L", "Paneli aç / kapat"), ("Ctrl + Alt + P", "Duraklat / devam et"), ("Ctrl + Alt + 0", "Yazılımsal renkleri sıfırla"), ("Ctrl + Alt + 1…6", "Hazır modları seç"), ("Esc", "Paneli tepsiye küçült") })
+        foreach (var (key, action) in new[] { ("Ctrl + Alt + L", Loc.T("Paneli aç / kapat")), ("Ctrl + Alt + P", Loc.T("Duraklat / devam et")), ("Ctrl + Alt + 0", Loc.T("Yazılımsal renkleri sıfırla")), ("Ctrl + Alt + 1…6", Loc.T("Hazır modları seç")), ("Esc", Loc.T("Paneli tepsiye küçült")) })
         {
             var row = new DockPanel { Margin = new(0, 4, 0, 8) }; var hotkey = T(key, 11, "#D4BEA1", FontWeights.SemiBold); DockPanel.SetDock(hotkey, Dock.Right); row.Children.Add(hotkey); row.Children.Add(T(action, 11, "#ADB2C0")); keys.Children.Add(row);
         }
-        if (_hotkeyFailures.Count > 0) keys.Children.Add(T("Başka uygulama kullanıyor: " + string.Join(", ", _hotkeyFailures), 10, "#EAC18D", margin: new(0, 5, 0, 0)));
+        if (_hotkeyFailures.Count > 0) keys.Children.Add(T(Loc.F($"Başka uygulama kullanıyor: {string.Join(", ", _hotkeyFailures)}"), 10, "#EAC18D", margin: new(0, 5, 0, 0)));
         ViewPanel.Children.Add(Card(keys));
-        ViewPanel.Children.Add(Heading("PROFİLLERİN VE YEDEKLERİN", "Yalnızca bu bilgisayarda", new(0, 22, 0, 10)));
+        ViewPanel.Children.Add(Heading(Loc.T("PROFİLLERİN VE YEDEKLERİN"), Loc.T("Yalnızca bu bilgisayarda"), new(0, 22, 0, 10)));
         var backup = new StackPanel();
         var rowBackup = new UniformGrid { Columns = 2 };
-        rowBackup.Children.Add(Btn("Ayarları dışa aktar", ExportSettings, new(0, 0, 5, 0)));
-        rowBackup.Children.Add(Btn("Yedekten içe aktar", ImportSettings, new(5, 0, 0, 0))); backup.Children.Add(rowBackup);
+        rowBackup.Children.Add(Btn(Loc.T("Ayarları dışa aktar"), ExportSettings, new(0, 0, 5, 0)));
+        rowBackup.Children.Add(Btn(Loc.T("Yedekten içe aktar"), ImportSettings, new(5, 0, 0, 0))); backup.Children.Add(rowBackup);
         foreach (var profile in _engine.Settings.CustomProfiles.ToList())
         {
-            var row = new DockPanel { Margin = new(0, 12, 0, 0) }; var remove = Btn("Kaldır", () =>
+            var row = new DockPanel { Margin = new(0, 12, 0, 0) }; var remove = Btn(Loc.T("Kaldır"), () =>
             {
-                if (_engine.Settings.Schedule.Any(x => x.ProfileId == profile.Id)) { Toast("Bu profil zaman planında kullanılıyor. Önce o zaman dilimini değiştir."); return; }
+                if (_engine.Settings.Schedule.Any(x => x.ProfileId == profile.Id)) { Toast(Loc.T("Bu profil zaman planında kullanılıyor. Önce o zaman dilimini değiştir.")); return; }
                 _engine.Settings.CustomProfiles.Remove(profile); _engine.SaveSoon(); RenderPage();
-            }); DockPanel.SetDock(remove, Dock.Right); row.Children.Add(remove); row.Children.Add(T(profile.Name, 12, "#D0D1D9", margin: new(0, 8, 8, 0))); backup.Children.Add(row);
+            }); DockPanel.SetDock(remove, Dock.Right); row.Children.Add(remove); row.Children.Add(T(profile.DisplayName, 12, "#D0D1D9", margin: new(0, 8, 8, 0))); backup.Children.Add(row);
         }
         ViewPanel.Children.Add(Card(backup));
         var info = new StackPanel();
-        info.Children.Add(T("luma", 24, "#F3D3AC", FontWeights.SemiBold)); info.Children.Add(T("1.1.0  ·  Windows 10 / 11  ·  Çevrimdışı", 10, "#A0A8BA", margin: new(0, 5, 0, 12)));
-        info.Children.Add(T("Renk filtresi SDR ekranlarda sürücü desteğiyle çalışır. HDR / gelişmiş renk açıkken güvenli şekilde atlanır. Windows Gece Işığı veya başka bir renk uygulaması aynı ayarları değiştirebilir.", 11, "#929CAE"));
-        info.Children.Add(T("Luma'dan çıkınca başlangıçtaki renk eğrisi geri yüklenir. Monitörün donanım ayarları monitörde kalır. Bilgi toplanmaz; ağ bağlantısı gerekmez.", 11, "#929CAE", margin: new(0, 9, 0, 12)));
-        info.Children.Add(Btn("Ayar klasörünü aç ↗", () => { Directory.CreateDirectory(AppSettings.Folder); if (!SystemIntegration.Open(AppSettings.Folder)) Toast("Ayar klasörü açılamadı."); }));
+        info.Children.Add(T("luma", 24, "#F3D3AC", FontWeights.SemiBold)); info.Children.Add(T(Loc.F($"{typeof(App).Assembly.GetName().Version!.ToString(3)}  ·  Windows 10 / 11  ·  Çevrimdışı"), 10, "#A0A8BA", margin: new(0, 5, 0, 12)));
+        info.Children.Add(T(Loc.T("Renk filtresi SDR ekranlarda sürücü desteğiyle çalışır. HDR / gelişmiş renk açıkken güvenli şekilde atlanır. Windows Gece Işığı veya başka bir renk uygulaması aynı ayarları değiştirebilir."), 11, "#929CAE"));
+        info.Children.Add(T(Loc.T("Luma'dan çıkınca başlangıçtaki renk eğrisi geri yüklenir. Monitörün donanım ayarları monitörde kalır. Bilgi toplanmaz; ağ bağlantısı gerekmez."), 11, "#929CAE", margin: new(0, 9, 0, 12)));
+        info.Children.Add(Btn(Loc.T("Ayar klasörünü aç ↗"), () => { Directory.CreateDirectory(AppSettings.Folder); if (!SystemIntegration.Open(AppSettings.Folder)) Toast(Loc.T("Ayar klasörü açılamadı.")); }));
         ViewPanel.Children.Add(Card(info, new(0, 16, 0, 0)));
         var exit = new UniformGrid { Columns = 2, Margin = new(0, 14, 0, 0) };
-        exit.Children.Add(Btn("Filtreyi sıfırla", () => { _engine.Reset(); RenderPage(); Toast("Yazılımsal renkler sıfırlandı. Otomasyon ve imleç sarma kapatıldı."); }, new(0, 0, 5, 0)));
-        exit.Children.Add(Btn("Luma'dan çık", async () => await _exit(), new(5, 0, 0, 0))); ViewPanel.Children.Add(exit);
+        exit.Children.Add(Btn(Loc.T("Filtreyi sıfırla"), () => { _engine.Reset(); RenderPage(); Toast(Loc.T("Yazılımsal renkler sıfırlandı. Otomasyon ve imleç sarma kapatıldı.")); }, new(0, 0, 5, 0)));
+        exit.Children.Add(Btn(Loc.T("Luma'dan çık"), async () => await _exit(), new(5, 0, 0, 0))); ViewPanel.Children.Add(exit);
     }
 
     private void ExportSettings()
@@ -585,10 +592,10 @@ public partial class MainWindow : Window
         _dialog = true;
         try
         {
-            var dialog = new SaveFileDialog { Filter = "Luma ayarları (*.json)|*.json", FileName = $"luma-yedek-{DateTime.Now:yyyy-MM-dd}.json", Title = "Luma ayarlarını yedekle" };
-            if (dialog.ShowDialog(this) == true) { File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(_engine.Settings, AppSettings.JsonOptions)); Toast("Ayarların yedeklendi."); }
+            var dialog = new SaveFileDialog { Filter = Loc.T("Luma ayarları (*.json)|*.json"), FileName = $"luma-yedek-{DateTime.Now:yyyy-MM-dd}.json", Title = Loc.T("Luma ayarlarını yedekle") };
+            if (dialog.ShowDialog(this) == true) { File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(_engine.Settings, AppSettings.JsonOptions)); Toast(Loc.T("Ayarların yedeklendi.")); }
         }
-        catch (Exception e) { Log.Write(e); Toast("Yedek kaydedilemedi. Dosya konumunu kontrol et."); }
+        catch (Exception e) { Log.Write(e); Toast(Loc.T("Yedek kaydedilemedi. Dosya konumunu kontrol et.")); }
         finally { _dialog = false; }
     }
     private void ImportSettings()
@@ -596,7 +603,7 @@ public partial class MainWindow : Window
         _dialog = true;
         try
         {
-            var dialog = new OpenFileDialog { Filter = "Luma ayarları (*.json)|*.json", Title = "Luma yedeğini seç" };
+            var dialog = new OpenFileDialog { Filter = Loc.T("Luma ayarları (*.json)|*.json"), Title = Loc.T("Luma yedeğini seç") };
             if (dialog.ShowDialog(this) != true) return;
             if (new FileInfo(dialog.FileName).Length > 1_000_000) throw new InvalidDataException();
             var imported = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(dialog.FileName));
@@ -621,17 +628,17 @@ public partial class MainWindow : Window
             _engine.Settings.SmoothTransitions = imported.SmoothTransitions; _engine.Settings.PauseFullscreen = imported.PauseFullscreen;
             _engine.Settings.BreakReminder = imported.BreakReminder; _engine.Settings.BreakMinutes = Math.Clamp(imported.BreakMinutes, 15, 120);
             foreach (var item in imported.Displays) if (item.Value != null) _engine.Settings.Displays[item.Key] = item.Value.Safe();
-            _engine.AdaptiveSettingsChanged(); _engine.ScheduleChanged(); _ = _engine.RefreshAsync(); RenderPage(); Toast("Yedek içe aktarıldı. Başlangıç ve kısayol tercihlerin korunur.");
+            _engine.AdaptiveSettingsChanged(); _engine.ScheduleChanged(); _ = _engine.RefreshAsync(); RenderPage(); Toast(Loc.T("Yedek içe aktarıldı. Başlangıç ve kısayol tercihlerin korunur."));
         }
-        catch (Exception e) { Log.Write(e); Toast("Geçerli bir Luma yedeği seç. Dosya okunamadı veya biçimi uygun değil."); }
+        catch (Exception e) { Log.Write(e); Toast(Loc.T("Geçerli bir Luma yedeği seç. Dosya okunamadı veya biçimi uygun değil.")); }
         finally { _dialog = false; }
     }
     private async void RefreshClicked()
     {
         if (_engine.Refreshing) return;
-        Toast("Ekranlar ve donanım özellikleri taranıyor…");
-        try { await _engine.RefreshAsync(); RenderDisplays(); RenderPage(); Toast($"{_engine.Displays.Monitors.Count} ekran algılandı."); }
-        catch (Exception e) { Log.Write(e); Toast("Ekranlar taranamadı. Bağlantıları kontrol et."); }
+        Toast(Loc.T("Ekranlar ve donanım özellikleri taranıyor…"));
+        try { await _engine.RefreshAsync(); RenderDisplays(); RenderPage(); Toast(Loc.F($"{_engine.Displays.Monitors.Count} ekran algılandı.")); }
+        catch (Exception e) { Log.Write(e); Toast(Loc.T("Ekranlar taranamadı. Bağlantıları kontrol et.")); }
     }
     private void IdentifyMonitors()
     {
@@ -644,7 +651,7 @@ public partial class MainWindow : Window
             overlay.Show(); var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) }; timer.Tick += (_, _) => { timer.Stop(); overlay.Close(); }; timer.Start();
         }
     }
-    private void OpenSettings(string uri) { if (SystemIntegration.Open(uri)) Hide(); else Toast("Windows ayarları açılamadı."); }
+    private void OpenSettings(string uri) { if (SystemIntegration.Open(uri)) Hide(); else Toast(Loc.T("Windows ayarları açılamadı.")); }
     private void RegisterHotkeys()
     {
         UnregisterHotkeys(); _hotkeyFailures.Clear(); if (!_engine.Settings.Hotkeys) return;
@@ -673,13 +680,13 @@ public partial class MainWindow : Window
     private static Border Divider() => new() { Height = 1, Background = Brush("#30333D"), Margin = new(0, 12, 0, 12) };
     private static Button Btn(string label, Action action, Thickness? margin = null)
     {
-        var b = new Button { Content = label, HorizontalContentAlignment = HorizontalAlignment.Center, Margin = margin ?? new(0) };
+        var b = new Button { Content = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center }, HorizontalContentAlignment = HorizontalAlignment.Center, Margin = margin ?? new(0) };
         b.Click += (_, _) => action(); return b;
     }
     private static Grid Heading(string title, string detail, Thickness? margin = null)
     {
         var grid = new Grid { Margin = margin ?? new(0, 0, 0, 10) }; grid.ColumnDefinitions.Add(new()); grid.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        grid.Children.Add(T(title, 9, "#B0B1BB", FontWeights.SemiBold)); var right = T(detail, 9, "#7F889C"); Grid.SetColumn(right, 1); grid.Children.Add(right); return grid;
+        grid.Children.Add(T(title, 9, "#B0B1BB", FontWeights.SemiBold)); var right = T(detail, 9, "#7F889C"); right.MaxWidth = 170; right.TextAlignment = TextAlignment.Right; right.Margin = new(8, 0, 0, 0); Grid.SetColumn(right, 1); grid.Children.Add(right); return grid;
     }
     private void PageTitle(string title, string subtitle)
     {
@@ -698,7 +705,7 @@ public partial class MainWindow : Window
     private ToggleButton NewSwitch(bool value, string label, Action<bool> changed)
     {
         var toggle = new ToggleButton { Style = (Style)FindResource("Switch"), IsChecked = value, Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetName(toggle, label); toggle.Click += (_, _) => changed(toggle.IsChecked == true); return toggle;
+        AutomationProperties.SetName(toggle, Loc.T(label)); toggle.Click += (_, _) => changed(toggle.IsChecked == true); return toggle;
     }
     private DockPanel SwitchRow(string title, string description, bool value, Action<bool> changed)
     {
@@ -708,9 +715,9 @@ public partial class MainWindow : Window
     private static Slider AddSlider(StackPanel panel, string name, string icon, double value, double min, double max, Func<double, string> format, Action<double> onChange, double tick, string? left = null, string? right = null)
     {
         var group = new StackPanel { Margin = new(0, 2, 0, 8) }; var header = new DockPanel(); var readout = T(format(value), 12, "#F2D2A9", FontWeights.SemiBold); DockPanel.SetDock(readout, Dock.Right); header.Children.Add(readout);
-        var caption = new StackPanel { Orientation = Orientation.Horizontal }; var glyph = Glyph(icon, 13, "#AAAFAF"); glyph.Margin = new(0, 0, 8, 0); caption.Children.Add(glyph); caption.Children.Add(T(name, 11, "#B5BBC8")); header.Children.Add(caption); group.Children.Add(header);
+        var caption = new StackPanel { Orientation = Orientation.Horizontal }; var glyph = Glyph(icon, 13, "#AAAFAF"); glyph.Margin = new(0, 0, 8, 0); caption.Children.Add(glyph); caption.Children.Add(T(Loc.T(name), 11, "#B5BBC8")); header.Children.Add(caption); group.Children.Add(header);
         var slider = new Slider { Minimum = min, Maximum = max, Value = Math.Clamp(value, min, max), TickFrequency = tick, SmallChange = tick, LargeChange = tick * 10, Margin = new(0, 6, 0, 0) };
-        AutomationProperties.SetName(slider, name);
+        AutomationProperties.SetName(slider, Loc.T(name));
         slider.ValueChanged += (_, _) => { readout.Text = format(slider.Value); onChange(slider.Value); }; group.Children.Add(slider);
         if (left != null)
         {
@@ -718,5 +725,5 @@ public partial class MainWindow : Window
         }
         panel.Children.Add(group); return slider;
     }
-    private ComboBox ProfileCombo(string selected) => new() { ItemsSource = _engine.Profiles, DisplayMemberPath = "Name", SelectedValuePath = "Id", SelectedValue = selected };
+    private ComboBox ProfileCombo(string selected) => new() { ItemsSource = _engine.Profiles, DisplayMemberPath = "DisplayName", SelectedValuePath = "Id", SelectedValue = selected };
 }

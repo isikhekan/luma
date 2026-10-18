@@ -93,7 +93,7 @@ public static class TuningService
         if (File.Exists(file))
         {
             var original = JsonSerializer.Deserialize<TuningSnapshot>(File.ReadAllText(file));
-            if (original == null || original.DisplayId != before.DisplayId) throw new InvalidDataException("Ekran yedeği doğrulanamadı.");
+            if (original == null || original.DisplayId != before.DisplayId) throw new InvalidDataException(Loc.T("Ekran yedeği doğrulanamadı."));
             if (original.ModifiedControls == null) return; // Preserve the older full backup exactly.
             before = original with { ModifiedControls = original.ModifiedControls.Concat(before.ModifiedControls ?? Array.Empty<string>()).Distinct().ToArray(),
                 BrightnessPercent = original.BrightnessPercent ?? before.BrightnessPercent, Nvidia = original.Nvidia ?? before.Nvidia };
@@ -102,14 +102,14 @@ public static class TuningService
     }
     public static async Task ApplyAsync(Engine engine, string displayId, string sceneId)
     {
-        if (!await Gate.WaitAsync(0)) throw new InvalidOperationException("Ekran profili uygulanıyor. Tamamlanmasını bekle.");
+        if (!await Gate.WaitAsync(0)) throw new InvalidOperationException(Loc.T("Ekran profili uygulanıyor. Tamamlanmasını bekle."));
         bool began = false;
         try
         {
             engine.BeginTuning(); began = true;
             await engine.EnsureHardwareAsync(); await engine.EnsureNvidiaAsync(); EnsureProfiles(engine);
-            var display = engine.Displays.Monitors.SingleOrDefault(x => x.Id == displayId) ?? throw new InvalidOperationException("Ekran bağlı değil.");
-            var scene = ScenesFor(engine, display).SingleOrDefault(x => x.Id == sceneId) ?? throw new InvalidOperationException("Profil bu ekrana ait değil.");
+            var display = engine.Displays.Monitors.SingleOrDefault(x => x.Id == displayId) ?? throw new InvalidOperationException(Loc.T("Ekran bağlı değil."));
+            var scene = ScenesFor(engine, display).SingleOrDefault(x => x.Id == sceneId) ?? throw new InvalidOperationException(Loc.T("Profil bu ekrana ait değil."));
             var controls = new List<string>(); var notes = new List<string>();
             bool software = Software(display, scene);
             if (scene.Backlight != null && display.BrightnessPercent != null) controls.Add("brightness");
@@ -147,7 +147,7 @@ public static class TuningService
                             File.WriteAllText(NvidiaOutputRecovery.FilePath, JsonSerializer.Serialize(new NvidiaOutputRecovery(displayId, nv.Output, display.ActiveColorMode)));
                             pendingOutput = true; await engine.Nvidia.SetOutputAsync(displayId, output);
                             var mode = new Native.DevMode { Size = (ushort)System.Runtime.InteropServices.Marshal.SizeOf<Native.DevMode>() };
-                            if (!Native.EnumDisplaySettings(display.Device, -1, ref mode) || mode.PelsWidth != display.PixelWidth || mode.PelsHeight != display.PixelHeight || mode.DisplayFrequency != display.Refresh) throw new InvalidOperationException("Çözünürlük / Hz değişti; çıkış geri alınacak.");
+                            if (!Native.EnumDisplaySettings(display.Device, -1, ref mode) || mode.PelsWidth != display.PixelWidth || mode.PelsHeight != display.PixelHeight || mode.DisplayFrequency != display.Refresh) throw new InvalidOperationException(Loc.T("Çözünürlük / Hz değişti; çıkış geri alınacak."));
                         }
                         else notes.Add("Kişisel NVIDIA çıkış profili bu bağlantıda desteklenmiyor; mevcut çıkış korundu.");
                     }
@@ -178,13 +178,13 @@ public static class TuningService
     }
     public static async Task RestoreAsync(Engine engine, string id)
     {
-        if (!await Gate.WaitAsync(0)) throw new InvalidOperationException("Ekran profili uygulanıyor.");
+        if (!await Gate.WaitAsync(0)) throw new InvalidOperationException(Loc.T("Ekran profili uygulanıyor."));
         bool began = false;
         try
         {
             engine.BeginTuning(); began = true;
-            var saved = JsonSerializer.Deserialize<TuningSnapshot>(File.ReadAllText(BackupPath(id))) ?? throw new InvalidDataException("Yedek okunamadı.");
-            if (saved.DisplayId != id) throw new InvalidDataException("Yedek bu ekrana ait değil.");
+            var saved = JsonSerializer.Deserialize<TuningSnapshot>(File.ReadAllText(BackupPath(id))) ?? throw new InvalidDataException(Loc.T("Yedek okunamadı."));
+            if (saved.DisplayId != id) throw new InvalidDataException(Loc.T("Yedek bu ekrana ait değil."));
             await RestoreSnapshotAsync(engine, saved); engine.Settings.ActiveMonitorScenes.Remove(id);
             engine.Settings.AdaptiveEnabled = false; engine.AdaptiveSettingsChanged(); engine.Settings.Save(); engine.AnnounceSceneApplied();
         }
@@ -197,10 +197,10 @@ public static class TuningService
         async Task Attempt(Func<Task> action) { try { await action(); } catch (Exception e) { Log.Write(e); failures.Add(e); } }
         if (Changed("brightness"))
         {
-            if (saved.Hardware.TryGetValue(0x10, out uint brightness)) await Attempt(async () => { if (!await engine.Displays.SetHardwareAsync(saved.DisplayId, 0x10, brightness)) throw new InvalidOperationException("Parlaklık geri yüklenemedi."); });
-            else if (saved.BrightnessPercent is double value) await Attempt(async () => { if (!await engine.Displays.SetBrightnessAsync(saved.DisplayId, value)) throw new InvalidOperationException("Windows parlaklığı geri yüklenemedi."); });
+            if (saved.Hardware.TryGetValue(0x10, out uint brightness)) await Attempt(async () => { if (!await engine.Displays.SetHardwareAsync(saved.DisplayId, 0x10, brightness)) throw new InvalidOperationException(Loc.T("Parlaklık geri yüklenemedi.")); });
+            else if (saved.BrightnessPercent is double value) await Attempt(async () => { if (!await engine.Displays.SetBrightnessAsync(saved.DisplayId, value)) throw new InvalidOperationException(Loc.T("Windows parlaklığı geri yüklenemedi.")); });
         }
-        if (Changed("contrast") && saved.Hardware.TryGetValue(0x12, out uint contrast)) await Attempt(async () => { if (!await engine.Displays.SetHardwareAsync(saved.DisplayId, 0x12, contrast)) throw new InvalidOperationException("Kontrast geri yüklenemedi."); });
+        if (Changed("contrast") && saved.Hardware.TryGetValue(0x12, out uint contrast)) await Attempt(async () => { if (!await engine.Displays.SetHardwareAsync(saved.DisplayId, 0x12, contrast)) throw new InvalidOperationException(Loc.T("Kontrast geri yüklenemedi.")); });
         if (saved.Nvidia is { } nv && !display.Hdr)
         {
             if (Changed("nvidia-color") && nv.Vibrance != null) await Attempt(() => engine.Nvidia.SetVibranceAsync(saved.DisplayId, nv.Vibrance.Percent));
@@ -211,7 +211,7 @@ public static class TuningService
         if (saved.Preference == null) engine.Settings.NvidiaDisplays.Remove(saved.DisplayId); else engine.Settings.NvidiaDisplays[saved.DisplayId] = saved.Preference;
         if (Changed("software")) await Attempt(async () => { engine.SetDisplayColor(saved.DisplayId, saved.Color); await engine.FlushColorsAsync(); });
         SetActiveScene(engine, display, saved.SceneId); engine.Settings.Save();
-        if (failures.Count > 0) throw new AggregateException("Bazı ayarlar geri yüklenemedi. Yedek korunuyor.", failures);
+        if (failures.Count > 0) throw new AggregateException(Loc.T("Bazı ayarlar geri yüklenemedi. Yedek korunuyor."), failures);
         if (File.Exists(NvidiaOutputRecovery.FilePath)) File.Delete(NvidiaOutputRecovery.FilePath);
     }
 }

@@ -11,6 +11,55 @@ if (args.Contains("--game-probe"))
 int assertions = 0;
 void Check(bool condition, string name) { assertions++; if (!condition) throw new Exception("FAIL: " + name); }
 
+Check(Loc.Resolve("auto", new System.Globalization.CultureInfo("tr-TR")) == "tr", "Turkish system language");
+Check(Loc.Resolve("auto", new System.Globalization.CultureInfo("es-MX")) == "es", "Spanish variants");
+Check(Loc.Resolve("auto", new System.Globalization.CultureInfo("zh-TW")) == "zh-Hans", "Chinese fallback");
+Check(Loc.Resolve("auto", new System.Globalization.CultureInfo("de-DE")) == "en", "Unsupported system language falls back to English");
+Check(Loc.Normalize("../../invalid") == "auto", "Only known language codes accepted");
+var sourceKeys = Loc.Catalog("en").Keys.OrderBy(x => x).ToArray();
+var driverValues = NvidiaService.Definitions.SelectMany(d => d.Options.Select(o => (d.Id, o.Value))).ToArray();
+var placeholder = new System.Text.RegularExpressions.Regex(@"\{\d+(?:,[^}:]+)?(?::[^}]+)?\}");
+foreach (string language in new[] { "en", "es", "zh-Hans" })
+{
+    var catalog = Loc.Catalog(language);
+    Check(catalog.Keys.OrderBy(x => x).SequenceEqual(sourceKeys), "Identical translation coverage: " + language);
+    Loc.Set(language);
+    foreach (var pair in catalog)
+    {
+        Check(!string.IsNullOrWhiteSpace(pair.Value), "Nonempty translation: " + pair.Key);
+        Check(placeholder.Matches(pair.Key).Select(x => x.Value).OrderBy(x => x).SequenceEqual(placeholder.Matches(pair.Value).Select(x => x.Value).OrderBy(x => x)), "Translation placeholders preserved: " + pair.Key);
+        Check(Loc.T(pair.Key) == pair.Value, "Exact translation: " + pair.Key);
+        // Every format must resolve with real numeric/time values, without raw placeholders.
+        if (placeholder.IsMatch(pair.Key))
+        {
+            object[] values = Enumerable.Range(0, 6).Select(_ => pair.Key.Contains("HH:mm") ? (object)new DateTime(2026, 10, 19, 19, 0, 0) : (object)42).ToArray();
+            string formatted = string.Format(Loc.Culture, pair.Value, values);
+            Check(!placeholder.IsMatch(formatted), "Formatted translation: " + pair.Key);
+            string legacy = string.Format(System.Globalization.CultureInfo.InvariantCulture, pair.Key, values);
+            Check(Loc.T(legacy) == formatted, "Legacy status templates: " + pair.Key);
+        }
+    }
+    Check(Loc.T("Gaming · gündüz (07:00–19:00)") == string.Format(Loc.Culture, catalog["Gaming · gündüz ({0}–{1})"], "07:00", "19:00"), "Dynamic daytime status translated");
+    Check(Loc.T("Oyun bekleniyor · 12 oyun otomatik eklendi") == string.Format(Loc.Culture, catalog["Oyun bekleniyor · {0} oyun otomatik eklendi"], 12), "Dynamic game count translated");
+    Check(Loc.F($"{3} ekran algılandı.") == string.Format(Loc.Culture, catalog["{0} ekran algılandı."], 3), "Typed formatting");
+    Check(new Profile("custom-id", "Gece", "", "", new()).DisplayName == "Gece", "Custom profile name preserved");
+    Check(new MonitorScene("monitor-id", "Gece · Akşam", "evening", new()).DisplayName == "Gece · " + catalog["Akşam"], "Hardware name preserved in monitor profile");
+    Check(driverValues.SequenceEqual(NvidiaService.Definitions.SelectMany(d => d.Options.Select(o => (d.Id, o.Value)))), "Driver option values stay stable across languages");
+    var roundtrip = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(new AppSettings { Language = language, ProfileNotifications = false }));
+    Check(roundtrip?.Language == language && !roundtrip.ProfileNotifications, "Language and notification preference persisted");
+}
+Loc.Set("tr");
+Check(Loc.T("Ekranlar") == "Ekranlar" && Profile.Defaults()[0].DisplayName == "Gündüz", "Turkish source language");
+Check(JsonSerializer.Deserialize<AppSettings>("{}") is { Language: "auto", ProfileNotifications: true }, "Existing settings migrate without reset");
+var feedback = new FeedbackGate(); var feedbackTime = DateTimeOffset.UtcNow;
+Check(feedback.Accept("gaming", feedbackTime), "First notification accepted");
+Check(!feedback.Accept("gaming", feedbackTime.AddMilliseconds(500)), "Duplicate notification suppressed");
+Check(feedback.Accept("evening", feedbackTime.AddMilliseconds(600)), "New profile replaces prior notification");
+Check(feedback.Accept("evening", feedbackTime.AddSeconds(3)), "Later notification accepted");
+Check(FeedbackGate.AutomaticTitle(true, false) == "Oyun algılandı", "Game entry title");
+Check(FeedbackGate.AutomaticTitle(false, true) == "Oyun kapandı", "Game exit title");
+Check(FeedbackGate.AutomaticTitle(false, false) == "Saat profili uygulandı", "Clock transition title");
+
 var identity = ColorMath.Identity();
 Check(identity.Length == 768 && identity[0] == 0 && identity[255] == 65535, "16-bit RGB identity");
 Check(ColorMath.Build(new(), identity).SequenceEqual(identity), "Neutral profile preserves calibration");

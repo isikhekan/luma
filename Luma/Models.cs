@@ -18,7 +18,9 @@ public sealed record ColorSettings(double Temperature = 6500, double Brightness 
 
 public sealed record Profile(string Id, string Name, string Icon, string Description, ColorSettings Color)
 {
-    public override string ToString() => Name;
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DisplayName => Defaults().Any(x => x.Id == Id) ? Loc.T(Name) : Name;
+    public override string ToString() => DisplayName;
     public static List<Profile> Defaults() => new()
     {
         new("day", "Gündüz", "\uE706", "Doğal ve dengeli", new()),
@@ -39,6 +41,8 @@ public sealed class ScheduleEntry
 
 public sealed class AppSettings
 {
+    public string Language { get; set; } = "auto";
+    public bool ProfileNotifications { get; set; } = true;
     public bool ScheduleEnabled { get; set; }
     public bool SmoothTransitions { get; set; } = true;
     public bool PauseFullscreen { get; set; }
@@ -88,6 +92,7 @@ public sealed class AppSettings
             value.Displays = value.Displays.Where(x => x.Value != null).ToDictionary(x => x.Key, x => x.Value.Safe());
             value.CustomProfiles = value.CustomProfiles.Where(x => x != null && x.Color != null && !string.IsNullOrWhiteSpace(x.Id)).Select(x => x with { Color = x.Color.Safe() }).ToList();
             value.Schedule = value.Schedule.Where(x => x != null && TimeOnly.TryParseExact(x.Time, "HH:mm", out _)).ToList();
+            value.Language = Loc.Normalize(value.Language);
             value.BreakMinutes = Math.Clamp(value.BreakMinutes, 15, 120);
             return value;
         }

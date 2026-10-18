@@ -9,7 +9,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/luma.ico</ApplicationIcon>
     <AssemblyName>Luma</AssemblyName>
-    <Version>1.4.0</Version>
+    <Version>1.5.0</Version>
     <Company>Luma</Company>
     <Description>Ekranın, tam kararında.</Description>
     <PublishSingleFile>true</PublishSingleFile>
@@ -20,4 +20,5 @@
     <Deterministic>true</Deterministic>
     <PathMap>$(MSBuildProjectDirectory)=/_/Luma</PathMap>
   </PropertyGroup>
+  <ItemGroup><EmbeddedResource Include="Locales/*.json" LogicalName="Luma.Locales.%(Filename)%(Extension)" /></ItemGroup>
 </Project>

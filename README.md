@@ -2,6 +2,8 @@
 
 A Windows tray app for monitor controls, hardware-aware Gaming / Evening profiles, and automatic game detection.
 
+Available in **Türkçe, English, Español and 简体中文**. The default follows the Windows UI language, with English as the fallback. Change it instantly in **Settings → Language** (Türkçe: **Ayarlar → Dil / Language**). Menus, tray actions, presets, hardware controls, notifications and application error messages follow your selection. Device names, game titles and custom profile names stay as entered. Native Windows file dialogs and vendor-provided diagnostic text may follow Windows or the driver language.
+
 **[Download the Windows x64 app](https://github.com/isikhekan/luma/releases/latest/download/Luma-win-x64.zip)** · [Releases](https://github.com/isikhekan/luma/releases)
 
 ## Download and run
@@ -40,13 +42,15 @@ Game + clock automation is enabled by default for new settings. A detected runni
 - 07:00–19:00: Gaming
 - 19:00–07:00: Evening
 
-Times are editable in **Otomasyon**. Manual selection lasts until the next game/clock context change. Pause temporarily suspends profile application. The classic schedule is available when game + clock automation is disabled.
+Times are editable in **Automation**. Manual selection lasts until the next game/clock context change. Pause temporarily suspends profile application. The classic schedule is available when game + clock automation is disabled.
+
+A small indicator slides in from the right after a game profile, time profile or supported setting is applied. It disappears automatically after four seconds and does not take keyboard focus or intercept clicks. Repeated slider updates are coalesced. Toggle **Settings → Profile notifications** or use **Test notification** to preview it. As a desktop window it may be hidden by exclusive fullscreen games; borderless/windowed games can display it without game injection.
 
 Installed games are scanned on startup and once per minute. Sources include Steam libraries, Epic manifests, Riot installations, supported GOG/Ubisoft/EA/Battle.net registry entries, Xbox MicrosoftGame.config installations and recognized game folders. Executables inside a detected game are indexed automatically; selecting EXE files is optional. Launchers, crash reporters, installers, SDK tools, dedicated servers and benchmark/background utilities are excluded. Protected or unusual installations may not be discoverable. No injection or game modification is used.
 
 ## Backups, controls and shortcuts
 
-Original per-display settings are saved locally before modification. **Ekranlar → Bu ekranın önceki ayarlarını geri yükle** restores the changed controls for that display and disables automatic switching. Generic profiles only restore the controls they touched. Normal app exit restores the initial software gamma curve; physical monitor and driver preferences remain until restored.
+Original per-display settings are saved locally before modification. **Displays → Restore this display's previous settings** restores the changed controls for that display and disables automatic switching. Generic profiles only restore the controls they touched. Normal app exit restores the initial software gamma curve; physical monitor and driver preferences remain until restored.
 
 - Ctrl+Alt+L: show/hide the tray panel
 - Ctrl+Alt+P: pause/resume
@@ -74,7 +78,9 @@ dotnet run --project Luma.Checks -c Release
 
 The checks cover gamma safety, time boundaries, per-display identity, generic NVIDIA/AMD/Intel capabilities, WMI identity matching, HDR/WCG preservation, game manifest parsing and recognition of an automatically discovered test process. `--hardware`, `--nvidia` and `--games` are optional local diagnostic modes. They may produce private local artifacts; do not commit them. `--nvidia-drstest` explicitly writes the same effective FXAA value, verifies it, and restores inheritance. Ordinary checks do not modify display or driver settings.
 
-`Luma.exe --render-test <folder>` renders real WPF views offscreen. Screenshots generated on a real machine may contain private hardware names; they are excluded from publication.
+`Luma.exe --render-test <folder> --language es` renders real WPF views and the profile indicator offscreen. It also exercises live language changes through the actual Settings selector without saving preview settings. Use `tr`, `en`, `es` or `zh-Hans`. Screenshots generated on a real machine may contain private hardware names; they are excluded from publication.
+
+Translations are embedded in `Luma/Locales/*.json` and work offline. Turkish source messages are stable catalog keys. Keep all catalog keys and formatting placeholders in sync when contributing translations; `Luma.Checks` verifies coverage, formatting, preference persistence and notification deduplication. Standard profiles and driver options keep stable identifiers across language changes.
 
 Release packaging creates release/Luma-win-x64.zip and SHA256SUMS.txt. The GitHub Release workflow can build and publish an existing version tag. Use the checksums when distributing binaries. The app is MIT licensed; bundled .NET / Windows Desktop runtime license notices are included in releases.
 
