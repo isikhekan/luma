@@ -8,6 +8,8 @@ namespace Luma;
 
 public partial class MainWindow
 {
+    private TextBlock? _gameOverlayStatus;
+    internal void RefreshGameOverlayStatus() { if (_gameOverlayStatus != null) _gameOverlayStatus.Text = Loc.T(((App)Application.Current).GameOverlayStatus); }
     public event Action<ProfileFeedback>? SettingApplied;
     private void ApplyLanguage()
     {
@@ -41,6 +43,11 @@ public partial class MainWindow
         language.Children.Add(SwitchRow(Loc.T("Profil bildirimleri"), Loc.T("Oyun ve ayar değişikliklerini ekranın sağında kısa bir belirteçle göster."), _engine.Settings.ProfileNotifications,
             value => { _engine.Settings.ProfileNotifications = value; _engine.SettingsChanged(); }));
         language.Children.Add(Btn(Loc.T("Bildirimi dene"), () => ReportSetting(Loc.T("Bu belirteç birkaç saniye sonra kendiliğinden kaybolur."), "preview", "Bildirim örneği"), new(0, 12, 0, 0)));
+        language.Children.Add(Divider());
+        language.Children.Add(SwitchRow(Loc.T("Oyun içi tam ekran bildirimi"), Loc.T("Kurulu RTSS ile oyunun içinde göster. FPS etkisi oyuna bağlıdır; sıfır kayıp garanti edilemez."), _engine.Settings.GameOverlay,
+            value => { _engine.Settings.GameOverlay = value; _engine.SettingsChanged(); ((App)Application.Current).PrepareGameOverlay(); }));
+        _gameOverlayStatus = T(Loc.T(((App)Application.Current).GameOverlayStatus), 10, "#B8CBA9", margin: new(0, 10, 0, 0)); language.Children.Add(_gameOverlayStatus);
+        language.Children.Add(T(Loc.T("RTSS'nin izin verdiği oyunlarda çalışır. Anti-cheat veya devre dışı OSD bildirimi engelleyebilir."), 10, "#A0A8BA", margin: new(0, 7, 0, 0)));
         ViewPanel.Children.Add(Card(language, new(0, 0, 0, 12)));
     }
     private void ReportSetting(string message, string key = "setting", string title = "Ayar uygulandı")

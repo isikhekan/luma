@@ -43,6 +43,7 @@ public sealed class AppSettings
 {
     public string Language { get; set; } = "auto";
     public bool ProfileNotifications { get; set; } = true;
+    public bool GameOverlay { get; set; } = true;
     public bool ScheduleEnabled { get; set; }
     public bool SmoothTransitions { get; set; } = true;
     public bool PauseFullscreen { get; set; }

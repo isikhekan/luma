@@ -337,7 +337,7 @@ public sealed class Engine : IDisposable
         {
             bool changed = false;
             if (PausedUntil.HasValue && DateTime.Now >= PausedUntil) { Paused = false; PausedUntil = null; changed = true; }
-            if (_adaptiveReady && Settings.AdaptiveEnabled) await Games.PollAsync(Settings.GameExecutables, Settings.IgnoredGameExecutables);
+            if (_adaptiveReady && (Settings.AdaptiveEnabled || Settings.ProfileNotifications && Settings.GameOverlay)) await Games.PollAsync(Settings.GameExecutables, Settings.IgnoredGameExecutables);
             else if (_adaptiveReady) await Games.RefreshCatalogAsync(false);
             if (_disposed) return;
             bool fullscreen = Settings.PauseFullscreen && !(Settings.AdaptiveEnabled && Games.Running.Count > 0) && IsFullscreen();

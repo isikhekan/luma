@@ -4,4 +4,6 @@
   <ItemGroup><Compile Include="../Luma/GameCatalogScanner.cs" Link="GameCatalogScanner.cs"/></ItemGroup>
   <ItemGroup><Compile Include="../Luma/MonitorProfiles.cs" Link="MonitorProfiles.cs"/><Compile Include="../Luma/WindowsBrightness.cs" Link="WindowsBrightness.cs"/></ItemGroup>
   <ItemGroup><Compile Include="../Luma/Localization.cs" Link="Localization.cs"/><Compile Include="../Luma/ProfileFeedback.cs" Link="ProfileFeedback.cs"/><EmbeddedResource Include="../Luma/Locales/*.json" LogicalName="Luma.Locales.%(Filename)%(Extension)" /></ItemGroup>
+  <PropertyGroup><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
+  <ItemGroup><Compile Include="../Luma/RtssClient.cs" Link="RtssClient.cs"/><Compile Include="../Luma/OverlayMotion.cs" Link="OverlayMotion.cs"/></ItemGroup>
 </Project>

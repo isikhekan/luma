@@ -44,9 +44,19 @@ Game + clock automation is enabled by default for new settings. A detected runni
 
 Times are editable in **Automation**. Manual selection lasts until the next game/clock context change. Pause temporarily suspends profile application. The classic schedule is available when game + clock automation is disabled.
 
-A small indicator slides in from the right after a game profile, time profile or supported setting is applied. It disappears automatically after four seconds and does not take keyboard focus or intercept clicks. Repeated slider updates are coalesced. Toggle **Settings → Profile notifications** or use **Test notification** to preview it. As a desktop window it may be hidden by exclusive fullscreen games; borderless/windowed games can display it without game injection.
+A small indicator slides in from the right after a game profile, time profile or supported setting is applied. It disappears automatically after four seconds and does not take keyboard focus or intercept clicks. Repeated slider updates are coalesced. Toggle **Settings → Profile notifications** or use **Test notification** to preview it.
 
-Installed games are scanned on startup and once per minute. Sources include Steam libraries, Epic manifests, Riot installations, supported GOG/Ubisoft/EA/Battle.net registry entries, Xbox MicrosoftGame.config installations and recognized game folders. Executables inside a detected game are indexed automatically; selecting EXE files is optional. Launchers, crash reporters, installers, SDK tools, dedicated servers and benchmark/background utilities are excluded. Protected or unusual installations may not be discoverable. No injection or game modification is used.
+### Fullscreen game notifications (RTSS)
+
+**Settings → In-game fullscreen notifications** uses an installed RivaTuner Statistics Server (RTSS) to render the card inside supported games, including exclusive fullscreen. Luma detects RTSS in its standard installation folder and starts it in the background when this option is enabled. RTSS is a separate optional dependency; it is not bundled or downloaded by Luma. Install it from a trusted publisher distribution such as [MSI Afterburner / RTSS](https://www.msi.com/blog/msi-afterburner-on-screen-display/).
+
+The bridge publishes a cached image in its own RTSS OSD slot. It preserves the current language, compensates for the game's OSD zoom, waits for the actual renderer after game launch, and clears the card on focus change or expiry. It does not activate another window, minimize the game, change fullscreen mode, change RTSS profiles, alter frame limits or modify game files. Existing RTSS OSDs are preserved. There is no animation/update loop while the card is stationary or idle.
+
+RTSS must be allowed by the game, OSD must be enabled, and its graphics renderer must support the image overlay. Anti-cheat, protected processes, unsupported renderers and user exclusions can prevent it from displaying; Luma does not bypass those restrictions. The Settings page reports the connection status. When an in-game notification cannot be delivered, Luma does not force a desktop window over the game.
+
+**Zero FPS impact cannot be guaranteed.** Synthetic client-publish timing is not an in-game FPS benchmark. Local validation covers the real RTSS shared-memory bridge, GPU-rendered cards and cleanup; it does not certify every game or exclusive-fullscreen mode. Microsoft explains the rendering and performance limits of exclusive fullscreen overlays in [Demystifying Fullscreen Optimizations](https://devblogs.microsoft.com/directx/demystifying-full-screen-optimizations/).
+
+Installed games are scanned on startup and once per minute. Sources include Steam libraries, Epic manifests, Riot installations, supported GOG/Ubisoft/EA/Battle.net registry entries, Xbox MicrosoftGame.config installations and recognized game folders. Executables inside a detected game are indexed automatically; selecting EXE files is optional. Launchers, crash reporters, installers, SDK tools, dedicated servers and benchmark/background utilities are excluded. Protected or unusual installations may not be discoverable. Game detection does not inject into games or change their files. The optional fullscreen notification renderer uses RTSS's existing graphics hooks.
 
 ## Backups, controls and shortcuts
 
@@ -80,7 +90,7 @@ The checks cover gamma safety, time boundaries, per-display identity, generic NV
 
 `Luma.exe --render-test <folder> --language es` renders real WPF views and the profile indicator offscreen. It also exercises live language changes through the actual Settings selector without saving preview settings. Use `tr`, `en`, `es` or `zh-Hans`. Screenshots generated on a real machine may contain private hardware names; they are excluded from publication.
 
-Translations are embedded in `Luma/Locales/*.json` and work offline. Turkish source messages are stable catalog keys. Keep all catalog keys and formatting placeholders in sync when contributing translations; `Luma.Checks` verifies coverage, formatting, preference persistence and notification deduplication. Standard profiles and driver options keep stable identifiers across language changes.
+Translations are embedded in `Luma/Locales/*.json` and work offline. Turkish source messages are stable catalog keys. Keep all catalog keys and formatting placeholders in sync when contributing translations; `Luma.Checks` verifies coverage, formatting, preference persistence and notification deduplication, shared-memory bounds/ownership/locking and OSD zoom compensation. `Luma.Checks --rtss-probe` checks a locally running RTSS instance; adding `--write` explicitly tests a temporary owned OSD slot and clears it. Standard profiles and driver options keep stable identifiers across language changes.
 
 Release packaging creates release/Luma-win-x64.zip and SHA256SUMS.txt. The GitHub Release workflow can build and publish an existing version tag. Use the checksums when distributing binaries. The app is MIT licensed; bundled .NET / Windows Desktop runtime license notices are included in releases.
 

@@ -94,6 +94,7 @@ internal static class Native
     [DllImport("user32.dll")] internal static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("user32.dll")] internal static extern bool GetClientRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")] internal static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
     [DllImport("user32.dll")] internal static extern IntPtr MonitorFromPoint(Point point, uint flags);
     [DllImport("user32.dll")] internal static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);

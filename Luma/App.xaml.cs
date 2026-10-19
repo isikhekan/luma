@@ -22,6 +22,9 @@ public partial class App : Application
     private MainWindow? _panel;
     private Engine? _engine;
     private ProfileIndicator? _indicator;
+    private GameOverlay? _gameOverlay;
+    internal string GameOverlayStatus => _gameOverlay?.Status ?? (RtssClient.FindInstalledServer() != null ? "RTSS bağlantısı bekleniyor" : "Tam ekran bildirimi için RTSS kurulumu gerekli");
+    internal void PrepareGameOverlay() => _gameOverlay?.Prepare(retry: true);
     private bool _exiting;
     private readonly string _pipeName = "Luma-" + Environment.UserName;
     protected override async void OnStartup(StartupEventArgs e)
@@ -71,10 +74,13 @@ public partial class App : Application
             _panel.IsVisibleChanged += (_, _) => WriteRuntimeStatus();
             MainWindow = _panel;
             CreateTray();
+            _gameOverlay = new GameOverlay(_engine, Dispatcher);
+            _gameOverlay.Changed += () => { _panel.RefreshGameOverlayStatus(); WriteRuntimeStatus(); };
+            _gameOverlay.Prepare();
             _engine.Notify += (title, text) => _tray?.ShowBalloonTip(5000, Loc.T(title), Loc.Status(text), Forms.ToolTipIcon.Info);
             _engine.ProfileApplied += ShowIndicator;
             _panel.SettingApplied += ShowIndicator;
-            _engine.Changed += () => { if (!_engine.Settings.ProfileNotifications) _indicator?.Dismiss(); };
+            _engine.Changed += () => { if (!_engine.Settings.ProfileNotifications) _indicator?.Dismiss(); if (!_engine.Settings.ProfileNotifications || !_engine.Settings.GameOverlay) _gameOverlay?.Prepare(); };
             Loc.Changed += UpdateLanguage;
             _engine.Changed += UpdateTray;
             _engine.Displays.HardwareLoaded += () => Dispatcher.BeginInvoke(WriteRuntimeStatus);
@@ -122,7 +128,7 @@ public partial class App : Application
                 }
                 catch (Exception error) { Log.Write(error); _tray?.ShowBalloonTip(5000, Loc.T("Ekran profili uygulanamadı"), Loc.Status(error.Message), Forms.ToolTipIcon.Warning); }
             }
-            await _engine.StartAdaptiveAsync(); _panel.InitializedUi(); WriteRuntimeStatus();
+            await _engine.StartAdaptiveAsync(); _gameOverlay?.Prepare(); _panel.InitializedUi(); WriteRuntimeStatus();
         }
         catch (Exception error)
         {
@@ -189,12 +195,17 @@ public partial class App : Application
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(() => ShowIndicator(feedback)); return; }
         if (_exiting || _engine?.Settings.ProfileNotifications != true) return;
-        try { (_indicator ??= new ProfileIndicator()).Present(feedback); }
+        try
+        {
+            if (_gameOverlay?.ShouldRoute(feedback) == true) { _indicator?.Dismiss(); _gameOverlay.Present(feedback); return; }
+            _gameOverlay?.Cancel(); (_indicator ??= new ProfileIndicator()).Present(feedback);
+        }
         catch (Exception error) { Log.Write(error); }
     }
     private void UpdateLanguage()
     {
         _indicator?.Dismiss();
+        _gameOverlay?.Cancel();
         var previous = _tray; var previousMenu = previous?.ContextMenuStrip;
         if (previous != null) { previous.Visible = false; previous.Dispose(); previousMenu?.Dispose(); }
         CreateTray(); UpdateTray();
@@ -207,7 +218,8 @@ public partial class App : Application
             Directory.CreateDirectory(AppSettings.Folder);
             File.WriteAllText(Path.Combine(AppSettings.Folder, "status.json"), JsonSerializer.Serialize(new
             {
-                Version = "1.5.0", Language = Loc.Language, LanguagePreference = _engine.Settings.Language, ProfileNotifications = _engine.Settings.ProfileNotifications,
+                Version = "1.6.0", Language = Loc.Language, LanguagePreference = _engine.Settings.Language, ProfileNotifications = _engine.Settings.ProfileNotifications,
+                GameOverlay = new { Enabled = _engine.Settings.GameOverlay, Backend = "RTSS", Status = _gameOverlay?.Status, Active = _gameOverlay?.Active, PublishMilliseconds = _gameOverlay?.LastPublishMilliseconds, TargetFps = _gameOverlay?.LastTargetFps },
                 ProcessId = Environment.ProcessId, Running = !_exiting, Updated = DateTimeOffset.Now,
                 TrayVisible = _tray?.Visible == true, PanelVisible = _panel.IsVisible,
                 RegisteredHotkeys = _panel.RegisteredHotkeyCount, HotkeyConflicts = _panel.HotkeyConflicts,
@@ -268,7 +280,7 @@ public partial class App : Application
     public async Task ExitAsync()
     {
         if (_exiting) return; _exiting = true;
-        Loc.Changed -= UpdateLanguage; _indicator?.Close(); _indicator = null;
+        Loc.Changed -= UpdateLanguage; if (_gameOverlay != null) await _gameOverlay.ShutdownAsync(); _indicator?.Close(); _indicator = null;
         _pipeCancellation?.Cancel();
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged; SystemEvents.PowerModeChanged -= OnPowerChanged; SystemEvents.SessionSwitch -= OnSessionSwitch;
         try { if (_engine != null) await _engine.ShutdownAsync(); } catch (Exception e) { Log.Write(e); }

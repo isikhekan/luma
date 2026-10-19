@@ -7,9 +7,11 @@ if (args.Contains("--game-probe"))
     int seconds = args.SkipWhile(x => x != "--probe-seconds").Skip(1).FirstOrDefault() is string duration && int.TryParse(duration, out int requested) ? Math.Clamp(requested, 1, 60) : 35;
     await Task.Delay(TimeSpan.FromSeconds(seconds)); return;
 }
+if (args.Contains("--rtss-probe")) { RtssChecks.Probe(args.Contains("--write")); return; }
 
 int assertions = 0;
 void Check(bool condition, string name) { assertions++; if (!condition) throw new Exception("FAIL: " + name); }
+RtssChecks.Run(Check);
 
 Check(Loc.Resolve("auto", new System.Globalization.CultureInfo("tr-TR")) == "tr", "Turkish system language");
 Check(Loc.Resolve("auto", new System.Globalization.CultureInfo("es-MX")) == "es", "Spanish variants");

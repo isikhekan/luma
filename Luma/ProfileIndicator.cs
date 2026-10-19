@@ -91,6 +91,21 @@ public sealed class ProfileIndicator : Window
         var png = new System.Windows.Media.Imaging.PngBitmapEncoder(); png.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
         using var stream = System.IO.File.Create(file); png.Save(stream);
     }
+    internal static (int Width, int Height) RenderOverlayImage(ProfileFeedback feedback, string file)
+    {
+        // Render one cached image per notification; RTSS reuses it during animation and hold.
+        // Rasterization preserves every language independently of RTSS's ANSI font renderer.
+        var card = new ProfileIndicator();
+        card._title.Text = Loc.T(feedback.Title); card._message.Text = feedback.Message;
+        card.Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.Culture.IetfLanguageTag);
+        var element = (FrameworkElement)card.Content;
+        element.Measure(new Size(350, 230)); int height = (int)Math.Ceiling(element.DesiredSize.Height);
+        element.Arrange(new Rect(0, 0, 350, height)); element.UpdateLayout();
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(350, height, 96, 96, PixelFormats.Pbgra32); bitmap.Render(element);
+        var png = new System.Windows.Media.Imaging.PngBitmapEncoder(); png.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using (var stream = System.IO.File.Create(file)) png.Save(stream);
+        card.Close(); return (350, height);
+    }
     private static SolidColorBrush ColorBrush(string color) => new((Color)ColorConverter.ConvertFromString(color));
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);

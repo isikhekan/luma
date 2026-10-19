@@ -1,10 +1,11 @@
-Luma 1.5.0
+Luma 1.6.0
 
-- Adds Turkish, English, Spanish and Simplified Chinese throughout the application, including tray menus, built-in profiles, monitor/NVIDIA controls, tooltips, accessibility labels, notifications and application errors.
-- Follows the Windows UI language on first use, falls back to English and saves an explicit language preference. Language switches apply immediately without changing display settings or user-defined names.
-- Adds a right-side profile indicator after game start, game exit, scheduled profile application and supported setting changes. It slides away after four seconds, does not take keyboard focus and does not intercept clicks.
-- Adds a notification toggle and preview in Settings, with duplicate suppression for repeated setting updates. Exclusive fullscreen games may cover this desktop indicator; borderless/windowed games can show it.
-- Localizes installer and uninstaller messages and preserves existing monitor profiles, automation rules, game catalogs and local preferences on upgrade.
-- Includes offline embedded translation catalogs, translated-layout previews, live language-switch checks, catalog/placeholder validation and notification-policy tests.
+- Adds an RTSS notification backend for supported fullscreen games. An existing standard RTSS installation is detected and started in the background; RTSS itself is not bundled.
+- Renders the four-language notification card inside the graphics overlay with a short slide animation and four-second hold, without activating a desktop window or changing game display mode.
+- Caches one image per notification, stops updates during the hold and while idle, compensates for the target OSD zoom and preserves other RTSS clients and user profiles.
+- Waits for the renderer during game launch and clears the card on foreground changes, expiry, cancellation and shutdown.
+- Adds a translated Settings toggle and connection status, plus shared-memory compatibility, ownership, bounds, lock and timing tests.
 
-Windows x64, self-contained. The executable is unsigned. Settings, hardware IDs, game paths, backups and local screenshots are excluded from the public source and release package.
+RTSS/game/anti-cheat compatibility is required. Zero FPS impact is not guaranteed; bridge-publish timing is not an in-game FPS measurement. Live validation covers the local RTSS bridge and GPU rendering, not every game's fullscreen mode. No game files, frame limits or anti-cheat settings are changed.
+
+Windows x64, self-contained, unsigned. Personal settings, monitor IDs, game paths, overlay cache images and local diagnostic screenshots are excluded from the public source and package.
