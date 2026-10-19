@@ -99,6 +99,16 @@ public partial class MainWindow : Window
             if (page == 2) SaveView("03-ekranlar-tam.png", 1580);
             if (page == 1) SaveView("02-otomasyon-tam.png", 2350);
             if (page == 3) SaveView("04-nvidia-tam.png", 2450);
+            if (page == 4)
+            {
+                SaveView("05-ayarlar-tam.png", 2200);
+                var app = (App)Application.Current;
+                foreach (var state in new[] { RtssSetupState.Installing, RtssSetupState.Ready, RtssSetupState.NeedsPackageManager, RtssSetupState.Failed })
+                {
+                    app.PreviewSetupState = state; RenderPage(); SaveView("05-rtss-" + state + ".png", 1700);
+                }
+                app.PreviewSetupState = RtssSetupState.NeedsConsent;
+            }
         }
         var secondary = _engine.Displays.Monitors.FirstOrDefault(TuningService.IsEligible);
         if (secondary != null)
@@ -579,7 +589,7 @@ public partial class MainWindow : Window
         var info = new StackPanel();
         info.Children.Add(T("luma", 24, "#F3D3AC", FontWeights.SemiBold)); info.Children.Add(T(Loc.F($"{typeof(App).Assembly.GetName().Version!.ToString(3)}  ·  Windows 10 / 11  ·  Çevrimdışı"), 10, "#A0A8BA", margin: new(0, 5, 0, 12)));
         info.Children.Add(T(Loc.T("Renk filtresi SDR ekranlarda sürücü desteğiyle çalışır. HDR / gelişmiş renk açıkken güvenli şekilde atlanır. Windows Gece Işığı veya başka bir renk uygulaması aynı ayarları değiştirebilir."), 11, "#929CAE"));
-        info.Children.Add(T(Loc.T("Luma'dan çıkınca başlangıçtaki renk eğrisi geri yüklenir. Monitörün donanım ayarları monitörde kalır. Bilgi toplanmaz; ağ bağlantısı gerekmez."), 11, "#929CAE", margin: new(0, 9, 0, 12)));
+        info.Children.Add(T(Loc.T("Luma'dan çıkınca başlangıçtaki renk eğrisi geri yüklenir. Monitörün donanım ayarları monitörde kalır. Luma bilgi toplamaz. İsteğe bağlı RTSS kurulumu internet gerektirir."), 11, "#929CAE", margin: new(0, 9, 0, 12)));
         info.Children.Add(Btn(Loc.T("Ayar klasörünü aç ↗"), () => { Directory.CreateDirectory(AppSettings.Folder); if (!SystemIntegration.Open(AppSettings.Folder)) Toast(Loc.T("Ayar klasörü açılamadı.")); }));
         ViewPanel.Children.Add(Card(info, new(0, 16, 0, 0)));
         var exit = new UniformGrid { Columns = 2, Margin = new(0, 14, 0, 0) };

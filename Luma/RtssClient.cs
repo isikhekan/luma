@@ -168,17 +168,7 @@ public sealed class RtssClient : IDisposable
         get { Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); return Encoding.GetEncoding((int)GetACP(), EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback); }
     }
     public static string? FindInstalledServer()
-    {
-        foreach (string root in new[] { Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) })
-        {
-            string path = Path.Combine(root, "RivaTuner Statistics Server", "RTSS.exe");
-            if (!File.Exists(path)) continue;
-            var info = FileVersionInfo.GetVersionInfo(path);
-            if (string.Equals(info.OriginalFilename, "RTSS.exe", StringComparison.OrdinalIgnoreCase)
-                && (info.ProductName == "RTSS" || info.ProductName?.Contains("RivaTuner", StringComparison.OrdinalIgnoreCase) == true)) return path;
-        }
-        return null;
-    }
+        => RtssInstallation.Find();
     public static bool StartInstalledServer()
     {
         string? path = FindInstalledServer(); if (path == null) return false;

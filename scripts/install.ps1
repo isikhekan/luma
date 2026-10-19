@@ -53,7 +53,7 @@ $uninstallPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Luma
 New-Item -Path $uninstallPath -Force | Out-Null
 $uninstallValues = @{
     DisplayName = 'Luma'
-    DisplayVersion = '1.6.0'
+    DisplayVersion = '1.7.0'
     Publisher = 'Luma'
     DisplayIcon = "$installedExe,0"
     InstallLocation = $installDirectory

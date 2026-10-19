@@ -21,7 +21,14 @@ public sealed class GameOverlay : IDisposable
     private IntPtr _eventHook;
     private uint _target;
     private int _generation;
-    private bool _startedServer, _disposed;
+    private bool _setupAttempted, _disposed;
+    private readonly RtssSetup _setup = new();
+    private CancellationTokenSource? _setupCancellation;
+    private Task? _setupTask;
+    public RtssSetupState SetupState => _setup.State;
+    public bool SetupBusy => _setup.Busy;
+    public int? SetupExitCode => _setup.ExitCode;
+    public bool InstallMissing => _setup.Missing;
     public string Status { get; private set; } = "Tam ekran bildirimi hazırlanıyor…";
     public event Action? Changed;
     public double LastPublishMilliseconds { get; private set; }
@@ -30,6 +37,7 @@ public sealed class GameOverlay : IDisposable
     public GameOverlay(Engine engine, Dispatcher dispatcher)
     {
         _engine = engine; _dispatcher = dispatcher;
+        _setup.Changed += () => { if (!Active && !_disposed) SetStatus(_setup.Status); };
         _foregroundChanged = (_, _, _, _, _, _, _) => _dispatcher.BeginInvoke(() =>
         { if (_target != 0 && ForegroundProcess() != _target) Cancel(); });
     }
@@ -37,12 +45,29 @@ public sealed class GameOverlay : IDisposable
     public void Prepare(bool retry = false)
     {
         if (_disposed) return;
-        if (retry) _startedServer = false;
-        if (!_engine.Settings.ProfileNotifications || !_engine.Settings.GameOverlay) { Cancel(); SetStatus("Tam ekran bildirimi kapalı"); return; }
-        if (_client.Available) { SetStatus("RTSS hazır · tam ekran oyun bildirimi etkin"); return; }
-        if (RtssClient.FindInstalledServer() == null) { SetStatus("Tam ekran bildirimi için RTSS kurulumu gerekli"); return; }
-        if (!_startedServer) { _startedServer = true; if (!RtssClient.StartInstalledServer()) { SetStatus("RTSS bildirimi tamamlanamadı · masaüstü odağı korundu"); return; } }
-        SetStatus("RTSS bağlantısı bekleniyor");
+        if (!_engine.Settings.ProfileNotifications || !_engine.Settings.GameOverlay)
+        { Cancel(); _setupCancellation?.Cancel(); SetStatus("Tam ekran bildirimi kapalı"); return; }
+        if (_setupTask is { IsCompleted: false }) return;
+        if (_setup.State == RtssSetupState.Ready && _client.Available && !retry) { if (!Active) SetStatus("RTSS hazır · tam ekran oyun bildirimi etkin"); return; }
+        if (_setupAttempted && !retry && _setup.State is not RtssSetupState.Ready) return;
+        _setupAttempted = true;
+        _setupCancellation?.Dispose(); _setupCancellation = new();
+        _setupTask = PrepareAsync(_setupCancellation.Token);
+    }
+    public void ApproveSetup()
+    {
+        if (_disposed || SetupBusy) return;
+        _engine.Settings.RtssInstallApproved = true; _engine.SaveSoon(); Prepare(retry: true);
+    }
+    private async Task PrepareAsync(CancellationToken token)
+    {
+        await _setup.EnsureAsync(_engine.Settings.RtssInstallApproved,
+            () => _engine.Games.Running.Count == 0 && !_engine.IsFullscreen(), token);
+        if (_disposed) return;
+        // A cancelled UAC/installation is a user choice, never an automatic retry loop.
+        if (_setup.State == RtssSetupState.Cancelled) { _engine.Settings.RtssInstallApproved = false; _engine.SaveSoon(); }
+        if (!_engine.Settings.ProfileNotifications || !_engine.Settings.GameOverlay) SetStatus("Tam ekran bildirimi kapalı");
+        else if (!Active) SetStatus(_setup.Status);
     }
     public bool ShouldRoute(ProfileFeedback feedback)
     {
@@ -141,6 +166,7 @@ public sealed class GameOverlay : IDisposable
         if (_eventHook != IntPtr.Zero) { UnhookWinEvent(_eventHook); _eventHook = IntPtr.Zero; }
         bool cleared = _client.Clear(); _client.Dispose();
         if (!cleared) _ = RetryClearAsync(generation);
+        if (Status == "Oyun içi bildirim gösteriliyor · RTSS") SetStatus(_setup.Busy ? _setup.Status : "RTSS hazır · tam ekran oyun bildirimi etkin");
     }
     private async Task RetryClearAsync(int generation)
     {
@@ -151,9 +177,12 @@ public sealed class GameOverlay : IDisposable
             if (_client.Clear()) { _client.Dispose(); return; }
         }
     }
-    public void Dispose() { if (_disposed) return; Cancel(); _disposed = true; }
+    public void Dispose() { if (_disposed) return; _setupCancellation?.Cancel(); Cancel(); _disposed = true; }
     public async Task ShutdownAsync()
     {
+        _setupCancellation?.Cancel();
+        if (_setupTask != null) await _setupTask;
+        _setupCancellation?.Dispose();
         Cancel();
         for (int i = 0; i < 20 && !_client.Clear(); i++) await Task.Delay(10);
         _client.Dispose(); _disposed = true;

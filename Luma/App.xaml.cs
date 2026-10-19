@@ -23,8 +23,20 @@ public partial class App : Application
     private Engine? _engine;
     private ProfileIndicator? _indicator;
     private GameOverlay? _gameOverlay;
-    internal string GameOverlayStatus => _gameOverlay?.Status ?? (RtssClient.FindInstalledServer() != null ? "RTSS bağlantısı bekleniyor" : "Tam ekran bildirimi için RTSS kurulumu gerekli");
+    internal RtssSetupState? PreviewSetupState { get; set; }
+    internal string GameOverlayStatus => PreviewSetupState is { } preview ? RtssSetup.StatusFor(preview) : _gameOverlay?.Status ?? "Tam ekran bildirimi hazırlanıyor…";
+    internal RtssSetupState GameOverlaySetupState => PreviewSetupState ?? _gameOverlay?.SetupState ?? RtssSetupState.NotChecked;
+    internal bool GameOverlaySetupBusy => GameOverlaySetupState is RtssSetupState.Deferred or RtssSetupState.Installing or RtssSetupState.Connecting;
+    internal bool GameOverlayInstallMissing => PreviewSetupState is { } preview ? preview != RtssSetupState.Ready : _gameOverlay?.InstallMissing == true;
+    internal void ApproveGameOverlaySetup() { if (_overlayInitialized) _gameOverlay?.ApproveSetup(); }
     internal void PrepareGameOverlay() => _gameOverlay?.Prepare(retry: true);
+    private bool _overlayInitialized, _setupOfferShown;
+    private void OfferGameOverlaySetup()
+    {
+        if (!_overlayInitialized || _setupOfferShown || _exiting || _panel?.IsVisible != true || _engine == null
+            || _gameOverlay?.SetupState != RtssSetupState.NeedsConsent || _engine.Games.Running.Count > 0 || _engine.IsFullscreen()) return;
+        _setupOfferShown = true; _panel.ShowGameOverlaySetup();
+    }
     private bool _exiting;
     private readonly string _pipeName = "Luma-" + Environment.UserName;
     protected override async void OnStartup(StartupEventArgs e)
@@ -38,6 +50,7 @@ public partial class App : Application
                 string directory = e.Args.SkipWhile(x => x != "--render-test").Skip(1).FirstOrDefault() ?? Path.Combine(Environment.CurrentDirectory, "artifacts");
                 string language = e.Args.SkipWhile(x => x != "--language").Skip(1).FirstOrDefault() ?? "tr";
                 Loc.Set(language);
+                PreviewSetupState = RtssSetupState.NeedsConsent;
                 var previewSettings = new AppSettings { Language = language };
                 using var previewEngine = new Engine(previewSettings, preview: true);
                 await previewEngine.Displays.RefreshAsync(true);
@@ -71,12 +84,11 @@ public partial class App : Application
             if (e.Args.Contains("--enable-adaptive")) { _engine.Settings.AdaptiveEnabled = true; _engine.Settings.ScheduleEnabled = false; }
             if (e.Args.Contains("--disable-adaptive")) _engine.Settings.AdaptiveEnabled = false;
             _panel = new MainWindow(_engine, ExitAsync);
-            _panel.IsVisibleChanged += (_, _) => WriteRuntimeStatus();
+            _panel.IsVisibleChanged += (_, _) => { WriteRuntimeStatus(); OfferGameOverlaySetup(); };
             MainWindow = _panel;
             CreateTray();
             _gameOverlay = new GameOverlay(_engine, Dispatcher);
-            _gameOverlay.Changed += () => { _panel.RefreshGameOverlayStatus(); WriteRuntimeStatus(); };
-            _gameOverlay.Prepare();
+            _gameOverlay.Changed += () => { _panel.RefreshGameOverlayStatus(); WriteRuntimeStatus(); OfferGameOverlaySetup(); };
             _engine.Notify += (title, text) => _tray?.ShowBalloonTip(5000, Loc.T(title), Loc.Status(text), Forms.ToolTipIcon.Info);
             _engine.ProfileApplied += ShowIndicator;
             _panel.SettingApplied += ShowIndicator;
@@ -128,7 +140,7 @@ public partial class App : Application
                 }
                 catch (Exception error) { Log.Write(error); _tray?.ShowBalloonTip(5000, Loc.T("Ekran profili uygulanamadı"), Loc.Status(error.Message), Forms.ToolTipIcon.Warning); }
             }
-            await _engine.StartAdaptiveAsync(); _gameOverlay?.Prepare(); _panel.InitializedUi(); WriteRuntimeStatus();
+            await _engine.StartAdaptiveAsync(); _overlayInitialized = true; _gameOverlay?.Prepare(); _panel.InitializedUi(); OfferGameOverlaySetup(); WriteRuntimeStatus();
         }
         catch (Exception error)
         {
@@ -218,8 +230,8 @@ public partial class App : Application
             Directory.CreateDirectory(AppSettings.Folder);
             File.WriteAllText(Path.Combine(AppSettings.Folder, "status.json"), JsonSerializer.Serialize(new
             {
-                Version = "1.6.0", Language = Loc.Language, LanguagePreference = _engine.Settings.Language, ProfileNotifications = _engine.Settings.ProfileNotifications,
-                GameOverlay = new { Enabled = _engine.Settings.GameOverlay, Backend = "RTSS", Status = _gameOverlay?.Status, Active = _gameOverlay?.Active, PublishMilliseconds = _gameOverlay?.LastPublishMilliseconds, TargetFps = _gameOverlay?.LastTargetFps },
+                Version = "1.7.0", Language = Loc.Language, LanguagePreference = _engine.Settings.Language, ProfileNotifications = _engine.Settings.ProfileNotifications,
+                GameOverlay = new { Enabled = _engine.Settings.GameOverlay, Backend = "RTSS", Status = _gameOverlay?.Status, Active = _gameOverlay?.Active, PublishMilliseconds = _gameOverlay?.LastPublishMilliseconds, TargetFps = _gameOverlay?.LastTargetFps, SetupState = _gameOverlay?.SetupState.ToString(), SetupBusy = _gameOverlay?.SetupBusy, SetupExitCode = _gameOverlay?.SetupExitCode },
                 ProcessId = Environment.ProcessId, Running = !_exiting, Updated = DateTimeOffset.Now,
                 TrayVisible = _tray?.Visible == true, PanelVisible = _panel.IsVisible,
                 RegisteredHotkeys = _panel.RegisteredHotkeyCount, HotkeyConflicts = _panel.HotkeyConflicts,

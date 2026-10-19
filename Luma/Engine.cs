@@ -361,7 +361,7 @@ public sealed class Engine : IDisposable
         catch (Exception e) { Log.Write(e); }
         finally { _tickBusy = false; }
     }
-    private bool IsFullscreen()
+    internal bool IsFullscreen()
     {
         var window = Native.GetForegroundWindow();
         if (window == IntPtr.Zero || window == WindowHandle) return false;

@@ -8,10 +8,19 @@ if (args.Contains("--game-probe"))
     await Task.Delay(TimeSpan.FromSeconds(seconds)); return;
 }
 if (args.Contains("--rtss-probe")) { RtssChecks.Probe(args.Contains("--write")); return; }
+if (args.Contains("--rtss-setup-probe"))
+{
+    var platform = new WindowsRtssSetup(); string? server = platform.FindServer();
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+    Console.WriteLine(JsonSerializer.Serialize(new { Installed = server != null, BridgeAvailable = platform.BridgeAvailable(),
+        PackageManagerAvailable = platform.FindPackageManager() != null, ReviewedPackageAvailable = await platform.CheckPackageAsync(deadline.Token),
+        NotificationsDisabled = server != null && platform.NotificationsDisabled(server) })); return;
+}
 
 int assertions = 0;
 void Check(bool condition, string name) { assertions++; if (!condition) throw new Exception("FAIL: " + name); }
 RtssChecks.Run(Check);
+await RtssSetupChecks.RunAsync(Check);
 
 Check(Loc.Resolve("auto", new System.Globalization.CultureInfo("tr-TR")) == "tr", "Turkish system language");
 Check(Loc.Resolve("auto", new System.Globalization.CultureInfo("es-MX")) == "es", "Spanish variants");
